@@ -91,8 +91,7 @@ services:
   - type: web
     name: lpb-web
     runtime: static
-    # Static sites are global at Render's edge - they don't take a region.
-    plan: starter
+    # Static sites are global at Render's edge and don't take a region or plan.
     buildCommand: cd web && npm ci && npm run build
     staticPublishPath: web/dist
     pullRequestPreviewsEnabled: true
