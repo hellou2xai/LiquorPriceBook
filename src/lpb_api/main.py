@@ -8,6 +8,7 @@ live at the root so Render's healthCheckPath works without an auth round-trip.
 """
 
 from contextlib import asynccontextmanager
+from datetime import UTC
 
 import sentry_sdk
 from fastapi import FastAPI
@@ -27,9 +28,42 @@ def _init_sentry() -> None:
         )
 
 
+def _recover_orphaned_ingest_runs() -> None:
+    """If the process restarted mid-ingest, any IngestRun left in 'running' is
+    orphaned. Mark them as failed so the UI doesn't spin forever and the admin
+    can re-upload. Safe to call repeatedly.
+    """
+    import logging
+    from datetime import datetime
+
+    from sqlalchemy import update
+
+    from lpb_core.db import SessionLocal
+    from lpb_core.db.models import IngestRun
+
+    log = logging.getLogger("lpb_api.startup")
+    try:
+        with SessionLocal() as session:
+            result = session.execute(
+                update(IngestRun)
+                .where(IngestRun.status == "running")
+                .values(
+                    status="failed",
+                    finished_at=datetime.now(UTC),
+                    error={"reason": "interrupted by process restart"},
+                )
+            )
+            if result.rowcount:
+                log.warning("recovered %d orphaned ingest runs", result.rowcount)
+            session.commit()
+    except Exception:  # noqa: BLE001
+        log.exception("could not recover orphaned ingest runs")
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     _init_sentry()
+    _recover_orphaned_ingest_runs()
     yield
 
 

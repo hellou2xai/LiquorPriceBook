@@ -6,25 +6,37 @@
   GET  /api/v1/admin/distributors            list distributors (for the upload form)
 
 PDFs land in ``book_editions.pdf_bytes`` so we don't need an object-storage
-dependency in MVP. The actual scrape + cleaning runs asynchronously in the
-lpb-worker service, which polls ``ingest_runs`` with SELECT...FOR UPDATE.
+dependency in MVP. The actual scrape + cleaning runs in-process via FastAPI
+BackgroundTasks (so we don't need to pay for a separate worker service).
+The IngestRun row tracks status; the UI polls /ingest/runs until completed.
+
+In Week 11 we'll add back a real worker service when alert evaluation arrives.
 """
 
 from __future__ import annotations
 
 import re
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    UploadFile,
+    status,
+)
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
-from lpb_core.db import get_session
+from lpb_core.db import SessionLocal, get_session
 from lpb_core.db.models import BookEdition, Distributor, IngestRun
-from lpb_worker.ingestion.pipeline import compute_content_hash
+from lpb_worker.ingestion.pipeline import compute_content_hash, run_ingest
 
 from .auth import get_current_user
 
@@ -98,12 +110,49 @@ def list_distributors(
     return rows
 
 
+def _run_ingest_background(ingest_run_id) -> None:
+    """Open a fresh session and run the ingest pipeline. Used as a
+    FastAPI BackgroundTask so the HTTP request returns immediately
+    with 202 while the actual scraping happens behind the scenes.
+
+    We open our own session because the request-scoped session has
+    already been closed by the time BackgroundTasks fires.
+    """
+    import logging
+    log = logging.getLogger("lpb_api.ingest")
+    try:
+        with SessionLocal() as bg_session:
+            run_ingest(bg_session, ingest_run_id)
+    except Exception as exc:  # noqa: BLE001 - we want to catch every failure mode
+        log.exception("background ingest failed run_id=%s", ingest_run_id)
+        # Mark the run failed so the UI doesn't spin forever.
+        from datetime import datetime
+
+        from sqlalchemy import update
+
+        try:
+            with SessionLocal() as cleanup:
+                cleanup.execute(
+                    update(IngestRun)
+                    .where(IngestRun.id == ingest_run_id)
+                    .values(
+                        status="failed",
+                        finished_at=datetime.now(UTC),
+                        error={"type": type(exc).__name__, "message": str(exc)},
+                    )
+                )
+                cleanup.commit()
+        except Exception:  # noqa: BLE001
+            log.exception("could not mark run failed run_id=%s", ingest_run_id)
+
+
 @router.post(
     "/ingest",
     response_model=IngestEnqueueResult,
     status_code=status.HTTP_202_ACCEPTED,
 )
 async def enqueue_ingest(
+    background_tasks: BackgroundTasks,
     pdf: Annotated[UploadFile, File(description="The price-book PDF to ingest")],
     distributor: Annotated[str, Form(description="Distributor slug, e.g. nj-allied")],
     year: Annotated[int | None, Form()] = None,
@@ -167,11 +216,14 @@ async def enqueue_ingest(
             edition.pdf_bytes = pdf_bytes
             session.flush()
 
-    # 4. Create a fresh ingest_run; the worker picks it up.
+    # 4. Create a fresh ingest_run and schedule it to run in-process
+    #    via FastAPI BackgroundTasks (no separate worker service needed).
     run = IngestRun(book_edition_id=edition.id, status="pending")
     session.add(run)
     session.commit()
     session.refresh(run)
+
+    background_tasks.add_task(_run_ingest_background, run.id)
 
     return IngestEnqueueResult(
         ingest_run_id=run.id,

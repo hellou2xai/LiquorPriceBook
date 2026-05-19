@@ -1,6 +1,20 @@
 # Render Blueprint for LiquorPriceBook
 # Deploy: connect this repo to Render, choose "Blueprint", select this file.
 # Docs: https://render.com/docs/blueprint-spec
+#
+# Cost-optimised layout (Option A, ~$14/mo):
+#   - lpb-db (Postgres, $7)
+#   - lpb-api (FastAPI web service, $7) - also handles PDF ingestion in-process
+#     via FastAPI BackgroundTasks, so we don't pay for a separate worker.
+#   - lpb-web (React SPA, static site, free) - served at ordering.celr.ai
+#
+# Custom domains:
+#   - App:  https://ordering.celr.ai      -> lpb-web
+#   - API:  https://api.ordering.celr.ai  -> lpb-api
+#
+# When we get to Week 11 (alert digests + scheduled work) we'll add back a
+# worker + cron job. Until then, the API does everything synchronously or
+# via BackgroundTasks.
 
 databases:
   - name: lpb-db
@@ -12,7 +26,8 @@ databases:
 
 services:
   # -------------------------------------------------------------------------
-  # API: FastAPI web service. Public HTTPS endpoint.
+  # API: FastAPI web service. Public HTTPS endpoint. Also runs PDF ingestion
+  # in-process via BackgroundTasks (saves the $7/mo cost of a worker).
   # -------------------------------------------------------------------------
   - type: web
     name: lpb-api
@@ -27,6 +42,8 @@ services:
     startCommand: uvicorn lpb_api.main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /healthz
     autoDeploy: true
+    domains:
+      - api.ordering.celr.ai
     envVars:
       - key: DATABASE_URL
         fromDatabase:
@@ -35,9 +52,9 @@ services:
       - key: APP_ENV
         value: production
       - key: APP_DOMAIN
-        value: liquorpricebook.com
+        value: ordering.celr.ai
       - key: WEB_ORIGIN
-        value: https://liquorpricebook.com
+        value: https://ordering.celr.ai
       # Interim static admin auth. Override in the Render dashboard for any
       # public deploy (and replace with Clerk JWT verification once wired).
       - key: LPB_ADMIN_USERNAME
@@ -55,38 +72,7 @@ services:
         sync: false
 
   # -------------------------------------------------------------------------
-  # Worker: background job runner. Polls ingest_runs and AI jobs.
-  # -------------------------------------------------------------------------
-  - type: worker
-    name: lpb-worker
-    runtime: python
-    region: ohio
-    plan: starter
-    buildCommand: pip install -e .
-    startCommand: python -m lpb_worker.main
-    autoDeploy: true
-    disk:
-      name: lpb-worker-data
-      mountPath: /var/data
-      sizeGB: 5
-    envVars:
-      - key: DATABASE_URL
-        fromDatabase:
-          name: lpb-db
-          property: connectionString
-      - key: APP_ENV
-        value: production
-      - key: PDF_STORAGE_PATH
-        value: /var/data/pdfs
-      - key: ANTHROPIC_API_KEY
-        sync: false
-      - key: RESEND_API_KEY
-        sync: false
-      - key: SENTRY_DSN
-        sync: false
-
-  # -------------------------------------------------------------------------
-  # Web: React SPA, static site.
+  # Web: React SPA, static site. Served globally from Render's edge CDN.
   # -------------------------------------------------------------------------
   - type: web
     name: lpb-web
@@ -95,13 +81,15 @@ services:
     buildCommand: cd web && npm ci && npm run build
     staticPublishPath: web/dist
     pullRequestPreviewsEnabled: true
+    domains:
+      - ordering.celr.ai
     routes:
       - type: rewrite
         source: /*
         destination: /index.html
     envVars:
       - key: VITE_API_URL
-        value: https://lpb-api.onrender.com
+        value: https://api.ordering.celr.ai
     headers:
       - path: /*
         name: X-Frame-Options
@@ -112,26 +100,3 @@ services:
       - path: /*
         name: Referrer-Policy
         value: strict-origin-when-cross-origin
-
-  # -------------------------------------------------------------------------
-  # Cron: monthly nudge to admin to upload the new price book.
-  # Distributors file the new CPL with ABC by the 15th of each month;
-  # we run on the 16th UTC so the book is already public.
-  # -------------------------------------------------------------------------
-  - type: cron
-    name: lpb-cron-ingest-nudge
-    runtime: python
-    region: ohio
-    plan: starter
-    schedule: "0 13 16 * *"   # 16th of each month at 13:00 UTC (8am EST)
-    buildCommand: pip install -e .
-    startCommand: python -m lpb_worker.jobs.ingest_nudge
-    envVars:
-      - key: DATABASE_URL
-        fromDatabase:
-          name: lpb-db
-          property: connectionString
-      - key: RESEND_API_KEY
-        sync: false
-      - key: SENTRY_DSN
-        sync: false
