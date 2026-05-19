@@ -38,6 +38,24 @@ from lpb_core.db import SessionLocal, get_session
 from lpb_core.db.models import BookEdition, Distributor, IngestRun
 from lpb_worker.ingestion.pipeline import compute_content_hash, run_ingest
 
+# ---------------------------------------------------------------------------
+# Request body for the prescraped endpoint
+# ---------------------------------------------------------------------------
+
+class PrescrapeBody(BaseModel):
+    """Pre-scraped section data produced by `scripts/local_ingest.py`.
+
+    The local script runs pdfplumber on the user's machine (unlimited RAM),
+    then POSTs just the structured rows here so the 512MB Render instance
+    never touches pdfplumber.
+    """
+    distributor: str
+    source_filename: str
+    content_hash: str
+    year: int
+    month: int
+    sections: dict[str, list[dict]]
+
 from .auth import get_current_user
 
 router = APIRouter(prefix="/api/v1/admin", tags=["admin"])
@@ -238,6 +256,96 @@ async def enqueue_ingest(
         year=parsed_year,
         month=parsed_month,
         content_hash=content_hash,
+        reused_existing_edition=reused,
+    )
+
+
+def _run_prescraped_background(ingest_run_id, sections: dict) -> None:
+    """Like _run_ingest_background but passes pre-scraped sections so the
+    server skips the PDF parsing stage entirely."""
+    import logging
+    log = logging.getLogger("lpb_api.ingest")
+    try:
+        with SessionLocal() as bg_session:
+            run_ingest(bg_session, ingest_run_id, prescraped_sections=sections)
+    except Exception as exc:  # noqa: BLE001
+        log.exception("background prescraped ingest failed run_id=%s", ingest_run_id)
+        from datetime import datetime
+        from sqlalchemy import update
+        try:
+            with SessionLocal() as cleanup:
+                cleanup.execute(
+                    update(IngestRun)
+                    .where(IngestRun.id == ingest_run_id)
+                    .values(
+                        status="failed",
+                        finished_at=datetime.now(UTC),
+                        error={"type": type(exc).__name__, "message": str(exc)},
+                    )
+                )
+                cleanup.commit()
+        except Exception:  # noqa: BLE001
+            log.exception("could not mark run failed run_id=%s", ingest_run_id)
+
+
+@router.post(
+    "/ingest/prescraped",
+    response_model=IngestEnqueueResult,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def ingest_prescraped(
+    body: PrescrapeBody,
+    background_tasks: BackgroundTasks,
+    user: dict = Depends(get_current_user),  # noqa: B008
+    session: Session = Depends(get_session),  # noqa: B008
+):
+    """Accept pre-scraped section data (produced locally) and run only the
+    DB upsert stages on the server. No PDF parsing, no pdfplumber, no OOM."""
+    dist = session.execute(
+        select(Distributor).where(Distributor.slug == body.distributor)
+    ).scalar_one_or_none()
+    if dist is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Unknown distributor slug: {body.distributor}",
+        )
+
+    # Idempotent edition upsert (no pdf_bytes stored — saves DB space too)
+    edition = session.execute(
+        select(BookEdition).where(
+            BookEdition.distributor_id == dist.id,
+            BookEdition.content_hash == body.content_hash,
+        )
+    ).scalar_one_or_none()
+    reused = edition is not None
+    if edition is None:
+        edition = BookEdition(
+            distributor_id=dist.id,
+            year=body.year,
+            month=body.month,
+            source_filename=body.source_filename,
+            content_hash=body.content_hash,
+            pdf_bytes=None,  # no PDF stored — scraped locally
+        )
+        session.add(edition)
+        session.flush()
+
+    run = IngestRun(book_edition_id=edition.id, status="pending")
+    session.add(run)
+    session.commit()
+    session.refresh(run)
+
+    background_tasks.add_task(
+        _run_prescraped_background, run.id, body.sections
+    )
+
+    return IngestEnqueueResult(
+        ingest_run_id=run.id,
+        book_edition_id=edition.id,
+        distributor_slug=dist.slug,
+        year=body.year,
+        month=body.month,
+        content_hash=body.content_hash,
         reused_existing_edition=reused,
     )
 

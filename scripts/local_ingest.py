@@ -1,37 +1,34 @@
-"""Local PDF ingest - scrape on your machine, push to the remote DB.
+"""Local PDF ingest - scrape on your machine, POST to Render API.
 
-Bypasses the 512MB Render instance entirely. Runs the same pipeline as the
-server-side ingest but uses your local RAM for pdfplumber parsing.
+Runs pdfplumber locally (unlimited RAM), then sends only the lightweight
+structured JSON to the server's /ingest/prescraped endpoint. The Render
+instance never touches pdfplumber, so it stays well under 512MB.
 
 Usage:
-  python -m scripts.local_ingest <pdf> --distributor nj-allied [--year 2026 --month 5]
+  python -m scripts.local_ingest <pdf> --api-url https://your-app.onrender.com
+  python -m scripts.local_ingest <pdf> --dry-run   # scrape only, no upload
 
-Requires DATABASE_URL in .env (or as an env var) pointing at the Render
-Postgres instance.
+Requires LPB_ADMIN_TOKEN env var (or defaults to 'lpb-static-admin-token').
 """
 
 from __future__ import annotations
 
 import argparse
+import hashlib
+import json
 import logging
+import os
+import re
 import sys
+import time
 from pathlib import Path
+from urllib.request import Request, urlopen
+from urllib.error import HTTPError
 
-# Add project root to path so imports work when running as `python -m scripts.local_ingest`
+# Add project root to path so templates import works
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
-    sys.path.insert(0, str(PROJECT_ROOT / "src"))
-
-import re
-from datetime import UTC, datetime
-from uuid import UUID
-
-from sqlalchemy import select
-
-from lpb_core.db import SessionLocal
-from lpb_core.db.models import BookEdition, Distributor, IngestRun
-from lpb_worker.ingestion.pipeline import compute_content_hash, run_ingest
 
 logging.basicConfig(
     level=logging.INFO,
@@ -58,18 +55,87 @@ def _parse_year_month(
     sys.exit(1)
 
 
+def _compute_content_hash(pdf_bytes: bytes) -> str:
+    return hashlib.sha256(pdf_bytes).hexdigest()
+
+
+def _scrape_locally(pdf_path: Path) -> dict[str, list[dict]]:
+    from templates.NjAllied import scrape_pdf
+    results, _diag = scrape_pdf(pdf_path, source_name=pdf_path.name)
+    return results
+
+
+def _post_prescraped(
+    api_url: str,
+    token: str,
+    payload: dict,
+) -> dict:
+    """POST the prescraped JSON to the Render API and return the response."""
+    url = f"{api_url}/api/v1/admin/ingest/prescraped"
+    body = json.dumps(payload).encode("utf-8")
+    req = Request(
+        url,
+        data=body,
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {token}",
+        },
+        method="POST",
+    )
+    try:
+        with urlopen(req) as resp:
+            return json.loads(resp.read())
+    except HTTPError as e:
+        detail = e.read().decode("utf-8", errors="replace")
+        log.error("API error %d: %s", e.code, detail)
+        raise
+
+
+def _poll_run(api_url: str, token: str, run_id: str) -> dict:
+    """Poll the ingest run until it completes or fails."""
+    url = f"{api_url}/api/v1/admin/ingest/runs/{run_id}"
+    headers = {"Authorization": f"Bearer {token}"}
+    while True:
+        req = Request(url, headers=headers)
+        with urlopen(req) as resp:
+            run = json.loads(resp.read())
+        status = run["status"]
+        if status == "completed":
+            return run
+        if status == "failed":
+            log.error("Ingest failed: %s", run.get("error"))
+            return run
+        log.info("  status=%s, waiting...", status)
+        time.sleep(3)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Ingest a price-book PDF locally and push to the remote DB"
+        description="Scrape a PDF locally and push structured data to the Render API"
     )
     parser.add_argument("pdf", type=Path, help="Path to the PDF file")
     parser.add_argument(
-        "-d", "--distributor", default="nj-allied", help="Distributor slug (default: nj-allied)"
+        "-d", "--distributor", default="nj-allied",
+        help="Distributor slug (default: nj-allied)",
     )
     parser.add_argument("--year", type=int, default=None, help="Edition year (e.g. 2026)")
     parser.add_argument("--month", type=int, default=None, help="Edition month (1-12)")
     parser.add_argument(
-        "--dry-run", action="store_true", help="Scrape locally but don't touch the DB"
+        "--api-url", default=os.environ.get("LPB_API_URL", ""),
+        help="Render API base URL (e.g. https://your-app.onrender.com). "
+             "Also reads LPB_API_URL env var.",
+    )
+    parser.add_argument(
+        "--token", default=os.environ.get("LPB_ADMIN_TOKEN", "lpb-static-admin-token"),
+        help="Admin bearer token (default: LPB_ADMIN_TOKEN env var or 'lpb-static-admin-token')",
+    )
+    parser.add_argument(
+        "--dry-run", action="store_true",
+        help="Scrape locally but don't upload to the API",
+    )
+    parser.add_argument(
+        "--no-poll", action="store_true",
+        help="Don't wait for the ingest to complete — just submit and exit",
     )
     args = parser.parse_args(argv)
 
@@ -84,82 +150,66 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     year, month = _parse_year_month(pdf_path.name, args.year, args.month)
-    content_hash = compute_content_hash(pdf_bytes)
-    log.info("PDF: %s  (%s bytes, hash=%s)", pdf_path.name, f"{len(pdf_bytes):,}", content_hash[:12])
+    content_hash = _compute_content_hash(pdf_bytes)
+    log.info(
+        "PDF: %s  (%s bytes, hash=%s)",
+        pdf_path.name, f"{len(pdf_bytes):,}", content_hash[:12],
+    )
     log.info("Edition: %d-%02d  distributor=%s", year, month, args.distributor)
 
-    if args.dry_run:
-        log.info("--dry-run: scraping locally only (no DB writes)")
-        from templates.NjAllied import scrape_pdf
+    # ---- Stage 1: Scrape locally (unlimited RAM) ----
+    log.info("Scraping PDF locally...")
+    sections = _scrape_locally(pdf_path)
+    total_rows = sum(len(v) for v in sections.values())
+    for section, rows in sections.items():
+        log.info("  %-24s %6d rows", section, len(rows))
+    log.info("Scrape complete: %d total rows across %d sections", total_rows, len(sections))
 
-        results, diag = scrape_pdf(pdf_path, source_name=pdf_path.name)
-        for section, rows in results.items():
-            log.info("  %-24s %6d rows", section, len(rows))
-        log.info("Dry run complete. No data pushed to DB.")
+    if args.dry_run:
+        log.info("--dry-run: done. No data uploaded.")
         return 0
 
-    # ---- Connect to DB and run the full pipeline ----
-    with SessionLocal() as session:
-        # 1. Find the distributor
-        dist = session.execute(
-            select(Distributor).where(Distributor.slug == args.distributor)
-        ).scalar_one_or_none()
-        if dist is None:
-            print(f"Unknown distributor slug: {args.distributor}", file=sys.stderr)
-            return 1
+    # ---- Stage 2: POST to Render API ----
+    if not args.api_url:
+        print(
+            "ERROR: --api-url is required (or set LPB_API_URL env var).\n"
+            "  Example: python -m scripts.local_ingest book.pdf "
+            "--api-url https://your-app.onrender.com",
+            file=sys.stderr,
+        )
+        return 1
 
-        # 2. Idempotent BookEdition upsert (same logic as the API endpoint)
-        edition = session.execute(
-            select(BookEdition).where(
-                BookEdition.distributor_id == dist.id,
-                BookEdition.content_hash == content_hash,
-            )
-        ).scalar_one_or_none()
+    payload = {
+        "distributor": args.distributor,
+        "source_filename": pdf_path.name,
+        "content_hash": content_hash,
+        "year": year,
+        "month": month,
+        "sections": sections,
+    }
+    payload_size = len(json.dumps(payload))
+    log.info("Uploading %s of structured data to %s ...", f"{payload_size:,} bytes", args.api_url)
 
-        if edition is not None:
-            log.info("Reusing existing BookEdition %s (same content hash)", edition.id)
-            if edition.pdf_bytes is None:
-                edition.pdf_bytes = pdf_bytes
-                session.flush()
-        else:
-            edition = BookEdition(
-                distributor_id=dist.id,
-                year=year,
-                month=month,
-                source_filename=pdf_path.name,
-                content_hash=content_hash,
-                pdf_bytes=pdf_bytes,
-            )
-            session.add(edition)
-            session.flush()
-            log.info("Created BookEdition %s", edition.id)
+    result = _post_prescraped(args.api_url, args.token, payload)
+    run_id = result["ingest_run_id"]
+    log.info(
+        "Accepted! run_id=%s  edition_id=%s  reused=%s",
+        run_id, result["book_edition_id"], result["reused_existing_edition"],
+    )
 
-        # 3. Create IngestRun
-        run = IngestRun(book_edition_id=edition.id, status="pending")
-        session.add(run)
-        session.commit()
-        session.refresh(run)
-        log.info("Created IngestRun %s", run.id)
+    if args.no_poll:
+        log.info("--no-poll: exiting. Check status at %s/api/v1/admin/ingest/runs/%s", args.api_url, run_id)
+        return 0
 
-        # 4. Run the pipeline (locally, with full RAM)
-        log.info("Starting ingest pipeline...")
-        try:
-            rows_by_section = run_ingest(session, run.id)
-        except Exception:
-            log.exception("Pipeline failed!")
-            # Mark run as failed
-            run_obj = session.get(IngestRun, run.id)
-            if run_obj:
-                run_obj.status = "failed"
-                run_obj.finished_at = datetime.now(UTC)
-                session.commit()
-            return 1
-
+    # ---- Stage 3: Poll until done ----
+    log.info("Waiting for server-side upserts to finish...")
+    run = _poll_run(args.api_url, args.token, run_id)
+    if run["status"] == "completed":
         log.info("Ingest complete!")
-        for section, count in rows_by_section.items():
+        for section, count in run.get("rows_by_section", {}).items():
             log.info("  %-24s %6d", section, count)
-
-    return 0
+        return 0
+    return 1
 
 
 if __name__ == "__main__":

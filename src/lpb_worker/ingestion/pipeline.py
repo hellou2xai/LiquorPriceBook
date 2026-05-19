@@ -86,12 +86,18 @@ def _refresh_matviews(session: Session) -> None:
 # main entry point
 # ---------------------------------------------------------------------------
 
-def run_ingest(session: Session, ingest_run_id: UUID) -> dict[str, int]:
+def run_ingest(
+    session: Session,
+    ingest_run_id: UUID,
+    *,
+    prescraped_sections: dict[str, list[dict]] | None = None,
+) -> dict[str, int]:
     """Execute the full pipeline for a single IngestRun. Commits at the end.
 
-    Memory-optimised for 512MB Render instances: each stage releases its
-    working set before the next stage begins, with explicit gc.collect()
-    at the transition points.
+    If *prescraped_sections* is provided the PDF scrape step is skipped
+    entirely — the heavy parsing was done on the caller's machine and only
+    the lightweight structured data is processed here.  This lets a 512MB
+    Render instance handle ingests that would otherwise OOM.
 
     Returns the rows_by_section dict (also persisted on the IngestRun row).
     """
@@ -101,11 +107,6 @@ def run_ingest(session: Session, ingest_run_id: UUID) -> dict[str, int]:
     edition: BookEdition = session.execute(
         select(BookEdition).where(BookEdition.id == run.book_edition_id)
     ).scalar_one()
-
-    if not edition.pdf_bytes:
-        raise RuntimeError(
-            f"BookEdition {edition.id} has no pdf_bytes; cannot scrape"
-        )
 
     # Grab immutable identifiers before we expire objects from session.
     edition_id = edition.id
@@ -122,18 +123,24 @@ def run_ingest(session: Session, ingest_run_id: UUID) -> dict[str, int]:
     session.commit()
     log.info("ingest_run=%s book_edition=%s starting", run.id, edition_id)
 
-    # ---- Stage 1: Scrape PDF (biggest memory consumer) ----
-    # Copy pdf_bytes out, then evict the deferred blob from the session
-    # so Python can free the ~5MB buffer.
-    pdf_bytes: bytes = edition.pdf_bytes
-    session.expire(edition, ["pdf_bytes"])
+    if prescraped_sections is not None:
+        # Caller already scraped the PDF locally — skip the heavy stage.
+        sections = prescraped_sections
+        log.info("using prescraped sections: %s", {k: len(v) for k, v in sections.items()})
+    else:
+        # ---- Stage 1: Scrape PDF (biggest memory consumer) ----
+        if not edition.pdf_bytes:
+            raise RuntimeError(
+                f"BookEdition {edition.id} has no pdf_bytes; cannot scrape"
+            )
+        pdf_bytes: bytes = edition.pdf_bytes
+        session.expire(edition, ["pdf_bytes"])
 
-    sections = _scrape_pdf_bytes(pdf_bytes, source_filename)
-    log.info("scraped sections: %s", {k: len(v) for k, v in sections.items()})
+        sections = _scrape_pdf_bytes(pdf_bytes, source_filename)
+        log.info("scraped sections: %s", {k: len(v) for k, v in sections.items()})
 
-    # Release the raw PDF bytes now — pdfplumber is closed.
-    del pdf_bytes
-    gc.collect()
+        del pdf_bytes
+        gc.collect()
 
     # ---- Stage 2: Normalise + upsert main catalog ----
     cat_resolver = CategoryResolver(session)
