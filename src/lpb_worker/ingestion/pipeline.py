@@ -102,6 +102,14 @@ def run_ingest(session: Session, ingest_run_id: UUID) -> dict[str, int]:
             f"BookEdition {edition.id} has no pdf_bytes; cannot scrape"
         )
 
+    # Flip status to running so the UI shows movement while the scrape
+    # is in flight. We commit straight away so the next /runs poll sees it.
+    session.execute(
+        update(IngestRun)
+        .where(IngestRun.id == run.id)
+        .values(status="running", started_at=datetime.now(UTC))
+    )
+    session.commit()
     log.info("ingest_run=%s book_edition=%s starting", run.id, edition.id)
     pdf_bytes: bytes = edition.pdf_bytes
 
