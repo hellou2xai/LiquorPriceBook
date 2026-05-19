@@ -21,6 +21,12 @@ if config.config_file_name is not None:
 target_metadata = Base.metadata
 
 
+# Convention: keep revision IDs short (<= 32 chars) so they fit alembic's
+# default ``alembic_version.version_num`` column. Use ``NNNN_slug`` form, e.g.
+# ``0003_add_index_x``. Descriptive context goes in the docstring + filename,
+# not the revision id.
+
+
 def run_migrations_offline() -> None:
     context.configure(
         url=settings.database_url_sync,

@@ -5,7 +5,7 @@ taxonomy derived from inspecting the 2026-04 and 2026-05 Allied price books.
 The ``raw_aliases`` JSONB array captures every OCR-garbled spelling we saw in
 the source PDFs so the cleaning layer can normalise to the canonical slug.
 
-Revision ID: 0002_seed_distributors_and_categories
+Revision ID: 0002_seed
 Revises: 0001_initial
 Create Date: 2026-05-19 12:30:00
 """
@@ -15,8 +15,9 @@ from typing import Sequence, Union
 from alembic import op
 from sqlalchemy import text
 
-
-revision: str = "0002_seed_distributors_and_categories"
+# Keep revision IDs short - the default alembic_version.version_num is
+# VARCHAR(32) and Postgres errors on longer values.
+revision: str = "0002_seed"
 down_revision: Union[str, None] = "0001_initial"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
