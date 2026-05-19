@@ -70,6 +70,17 @@ def compute_content_hash(pdf_bytes: bytes) -> str:
     return hashlib.sha256(pdf_bytes).hexdigest()
 
 
+def _refresh_matviews(session: Session) -> None:
+    """Refresh every materialised view that depends on product_editions /
+    rip_offers / partials. Called at the end of every successful ingest."""
+    from sqlalchemy import text as _text
+    for view in ("mv_price_changes",):
+        try:
+            session.execute(_text(f"REFRESH MATERIALIZED VIEW {view}"))
+        except Exception:  # noqa: BLE001
+            log.exception("could not refresh %s", view)
+
+
 # ---------------------------------------------------------------------------
 # main entry point
 # ---------------------------------------------------------------------------
@@ -170,7 +181,18 @@ def run_ingest(session: Session, ingest_run_id: UUID) -> dict[str, int]:
             list(cat_resolver.unknown.items())[:5],
         )
 
-    # 6. Stamp the edition + ingest run as done.
+    # 6. Refresh materialised views so dashboard / RIP-stability queries see
+    # the new edition. Cheap with our row counts (<30k); revisit if it grows.
+    _refresh_matviews(session)
+
+    # 6b. AI-C: evaluate per-ingest alerts (rules engine -> alert_events).
+    try:
+        from lpb_worker.alerts import evaluate_alerts
+        evaluate_alerts(session, edition.id)
+    except Exception:  # noqa: BLE001
+        log.exception("alert evaluation failed; ingest still considered successful")
+
+    # 7. Stamp the edition + ingest run as done.
     session.execute(
         update(BookEdition)
         .where(BookEdition.id == edition.id)

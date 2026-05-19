@@ -14,9 +14,17 @@ NEVER ship this static mode to a real customer-facing production tenant.
 
 import os
 import secrets
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
+
+# Seeded by migration 0004. The static-auth gate hands these back so the
+# rest of the app can attribute writes to a real tenant + user without
+# needing Clerk wired up.
+DEFAULT_TENANT_ID = UUID("00000000-0000-0000-0000-00000000a001")
+DEFAULT_USER_ID = UUID("00000000-0000-0000-0000-00000000a002")
+DEFAULT_WATCHLIST_ID = UUID("00000000-0000-0000-0000-00000000a003")
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
@@ -75,7 +83,13 @@ def get_current_user(request: Request) -> dict:
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid token",
         )
-    return {"username": _admin_username(), "role": "admin"}
+    return {
+        "username": _admin_username(),
+        "role": "admin",
+        "user_id": DEFAULT_USER_ID,
+        "tenant_id": DEFAULT_TENANT_ID,
+        "default_watchlist_id": DEFAULT_WATCHLIST_ID,
+    }
 
 
 @router.get("/me")

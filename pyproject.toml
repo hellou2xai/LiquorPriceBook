@@ -55,6 +55,11 @@ target-version = "py311"
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP"]
 
+[tool.ruff.lint.per-file-ignores]
+# FastAPI requires Query(), Depends(), File(), Form() in defaults - that's how
+# the framework reads the parameter spec. B008 doesn't understand this idiom.
+"src/lpb_api/routes/*.py" = ["B008"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
