@@ -27,7 +27,6 @@ from sqlalchemy.orm import Session, aliased
 from lpb_core.db import get_session
 from lpb_core.db.models import (
     AuditLog,
-    BookEdition,
     Brand,
     Category,
     Distributor,
