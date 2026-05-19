@@ -21,6 +21,7 @@ same edition is safe.
 
 from __future__ import annotations
 
+import gc
 import hashlib
 import logging
 import tempfile
@@ -88,6 +89,10 @@ def _refresh_matviews(session: Session) -> None:
 def run_ingest(session: Session, ingest_run_id: UUID) -> dict[str, int]:
     """Execute the full pipeline for a single IngestRun. Commits at the end.
 
+    Memory-optimised for 512MB Render instances: each stage releases its
+    working set before the next stage begins, with explicit gc.collect()
+    at the transition points.
+
     Returns the rows_by_section dict (also persisted on the IngestRun row).
     """
     run: IngestRun = session.get(IngestRun, ingest_run_id)  # type: ignore[assignment]
@@ -102,6 +107,11 @@ def run_ingest(session: Session, ingest_run_id: UUID) -> dict[str, int]:
             f"BookEdition {edition.id} has no pdf_bytes; cannot scrape"
         )
 
+    # Grab immutable identifiers before we expire objects from session.
+    edition_id = edition.id
+    distributor_id = edition.distributor_id
+    source_filename = edition.source_filename
+
     # Flip status to running so the UI shows movement while the scrape
     # is in flight. We commit straight away so the next /runs poll sees it.
     session.execute(
@@ -110,24 +120,30 @@ def run_ingest(session: Session, ingest_run_id: UUID) -> dict[str, int]:
         .values(status="running", started_at=datetime.now(UTC))
     )
     session.commit()
-    log.info("ingest_run=%s book_edition=%s starting", run.id, edition.id)
-    pdf_bytes: bytes = edition.pdf_bytes
+    log.info("ingest_run=%s book_edition=%s starting", run.id, edition_id)
 
-    # 1. Scrape to a temp file (pdfplumber wants a path).
-    sections = _scrape_pdf_bytes(pdf_bytes, edition.source_filename)
+    # ---- Stage 1: Scrape PDF (biggest memory consumer) ----
+    # Copy pdf_bytes out, then evict the deferred blob from the session
+    # so Python can free the ~5MB buffer.
+    pdf_bytes: bytes = edition.pdf_bytes
+    session.expire(edition, ["pdf_bytes"])
+
+    sections = _scrape_pdf_bytes(pdf_bytes, source_filename)
     log.info("scraped sections: %s", {k: len(v) for k, v in sections.items()})
 
-    # 2. Build cleaning helpers and run the normalisation passes.
+    # Release the raw PDF bytes now — pdfplumber is closed.
+    del pdf_bytes
+    gc.collect()
+
+    # ---- Stage 2: Normalise + upsert main catalog ----
     cat_resolver = CategoryResolver(session)
     brand_deriver = BrandDeriver(session)
     sort_order_by_cat = dict(
         session.execute(select(Category.id, Category.sort_order)).all()
     )
 
-    # Resolve category_id for every main-catalog row, dedupe by code,
-    # then upsert products + product_editions.
     main_rows: list[dict[str, Any]] = []
-    for raw in sections.get("main_catalog", []):
+    for raw in sections.pop("main_catalog", []):
         cat_id = cat_resolver.resolve(raw.get("category"))
         brand_id = brand_deriver.ensure(
             description=raw.get("brand_header"),
@@ -135,42 +151,57 @@ def run_ingest(session: Session, ingest_run_id: UUID) -> dict[str, int]:
         )
         main_rows.append({**raw, "category_id": cat_id, "brand_id": brand_id})
 
+    unknown_cats = len(cat_resolver.unknown)
+    if cat_resolver.unknown:
+        log.warning(
+            "unknown category strings (first 5): %s",
+            list(cat_resolver.unknown.items())[:5],
+        )
+    del cat_resolver, brand_deriver, sort_order_by_cat
+
     code_to_winning_cat = resolve_duplicate_code_categories(
         [{"code": r["code"], "category_id": r["category_id"]} for r in main_rows],
-        sort_order_by_category_id=sort_order_by_cat,
     )
 
     products_inserted = _upsert_products_and_editions(
         session=session,
-        distributor_id=edition.distributor_id,
-        book_edition_id=edition.id,
+        distributor_id=distributor_id,
+        book_edition_id=edition_id,
         main_rows=main_rows,
         winning_category_by_code=code_to_winning_cat,
     )
+    del code_to_winning_cat
 
-    # 3. RIP offers (1:N from product_editions).
-    rip_inserted = _insert_rip_offers(session, edition.id, main_rows)
+    # ---- Stage 3: RIP offers ----
+    rip_inserted = _insert_rip_offers(session, edition_id, main_rows)
 
-    # 4. Build the matcher index now that products exist for this edition.
-    product_index = _build_product_index(session, edition.distributor_id)
+    # main_rows no longer needed.
+    del main_rows
+    gc.collect()
+
+    # ---- Stage 4: Fuzzy-linked sections (partials, IR, combos, kegs) ----
+    product_index = _build_product_index(session, distributor_id)
     matcher = FuzzyProductMatcher(product_index)
+    del product_index
 
-    # 5. Insert dependent sections.
     pp_inserted, pp_lc = _insert_partials_pricing(
-        session, edition.id, sections.get("partials_pricing", []), matcher
+        session, edition_id, sections.pop("partials_pricing", []), matcher
     )
     pr_inserted, pr_lc = _insert_partials_rips(
-        session, edition.id, sections.get("partials_rips", []), matcher
+        session, edition_id, sections.pop("partials_rips", []), matcher
     )
     ir_inserted = _insert_inventory_reduction(
-        session, edition.id, sections.get("inventory_reduction", []), matcher
+        session, edition_id, sections.pop("inventory_reduction", []), matcher
     )
     combos_inserted = _insert_combos(
-        session, edition.id, sections.get("combos", [])
+        session, edition_id, sections.pop("combos", [])
     )
     keg_inserted = _insert_kegs(
-        session, edition.id, sections.get("keg_list", []), matcher
+        session, edition_id, sections.pop("keg_list", []), matcher
     )
+
+    del sections, matcher
+    gc.collect()
 
     rows_by_section = {
         "main_catalog": products_inserted,
@@ -181,29 +212,22 @@ def run_ingest(session: Session, ingest_run_id: UUID) -> dict[str, int]:
         "combos": combos_inserted,
         "keg_list": keg_inserted,
         "low_confidence_matches": pp_lc + pr_lc,
-        "unknown_categories": len(cat_resolver.unknown),
+        "unknown_categories": unknown_cats,
     }
-    if cat_resolver.unknown:
-        log.warning(
-            "unknown category strings (first 5): %s",
-            list(cat_resolver.unknown.items())[:5],
-        )
 
-    # 6. Refresh materialised views so dashboard / RIP-stability queries see
-    # the new edition. Cheap with our row counts (<30k); revisit if it grows.
+    # ---- Stage 5: Refresh matviews + alerts ----
     _refresh_matviews(session)
 
-    # 6b. AI-C: evaluate per-ingest alerts (rules engine -> alert_events).
     try:
         from lpb_worker.alerts import evaluate_alerts
-        evaluate_alerts(session, edition.id)
+        evaluate_alerts(session, edition_id)
     except Exception:  # noqa: BLE001
         log.exception("alert evaluation failed; ingest still considered successful")
 
-    # 7. Stamp the edition + ingest run as done.
+    # ---- Stage 6: Mark complete ----
     session.execute(
         update(BookEdition)
-        .where(BookEdition.id == edition.id)
+        .where(BookEdition.id == edition_id)
         .values(scraped_at=datetime.now(UTC))
     )
     session.execute(
