@@ -87,6 +87,11 @@ export type IngestRun = {
   rows_by_section: Record<string, number>;
   error: Record<string, unknown> | null;
   created_at: string;
+  distributor_slug?: string | null;
+  distributor_name?: string | null;
+  book_year?: number | null;
+  book_month?: number | null;
+  source_filename?: string | null;
 };
 
 export type IngestEnqueueResult = {
@@ -277,6 +282,8 @@ export const adminApi = {
   listDistributors: () => api<Distributor[]>("/api/v1/admin/distributors"),
   listRuns: (limit = 50) => api<IngestRun[]>(`/api/v1/admin/ingest/runs?limit=${limit}`),
   getRun: (id: string) => api<IngestRun>(`/api/v1/admin/ingest/runs/${id}`),
+  retryRun: (id: string) =>
+    api<IngestRun>(`/api/v1/admin/ingest/runs/${id}/retry`, { method: "POST" }),
   uploadIngest: (file: File, distributorSlug: string) => {
     const fd = new FormData();
     fd.append("pdf", file);

@@ -67,6 +67,12 @@ class IngestRunOut(BaseModel):
     rows_by_section: dict
     error: dict | None
     created_at: datetime
+    # Joined-in context so the UI doesn't need a second roundtrip per row
+    distributor_slug: str | None = None
+    distributor_name: str | None = None
+    book_year: int | None = None
+    book_month: int | None = None
+    source_filename: str | None = None
 
 
 class IngestEnqueueResult(BaseModel):
@@ -236,6 +242,35 @@ async def enqueue_ingest(
     )
 
 
+def _enrich_run(session: Session, run: IngestRun) -> IngestRunOut:
+    """Pack BookEdition + Distributor context into the run response."""
+    ed = session.get(BookEdition, run.book_edition_id)
+    dist_slug = None
+    dist_name = None
+    if ed is not None:
+        d = session.execute(
+            select(Distributor).where(Distributor.id == ed.distributor_id)
+        ).scalar_one_or_none()
+        if d is not None:
+            dist_slug = d.slug
+            dist_name = d.name
+    return IngestRunOut(
+        id=run.id,
+        book_edition_id=run.book_edition_id,
+        status=run.status,
+        started_at=run.started_at,
+        finished_at=run.finished_at,
+        rows_by_section=run.rows_by_section or {},
+        error=run.error,
+        created_at=run.created_at,
+        distributor_slug=dist_slug,
+        distributor_name=dist_name,
+        book_year=ed.year if ed is not None else None,
+        book_month=ed.month if ed is not None else None,
+        source_filename=ed.source_filename if ed is not None else None,
+    )
+
+
 @router.get("/ingest/runs", response_model=list[IngestRunOut])
 def list_ingest_runs(
     limit: int = 50,
@@ -246,7 +281,7 @@ def list_ingest_runs(
     rows = session.execute(
         select(IngestRun).order_by(desc(IngestRun.created_at)).limit(limit)
     ).scalars().all()
-    return rows
+    return [_enrich_run(session, r) for r in rows]
 
 
 @router.get("/ingest/runs/{run_id}", response_model=IngestRunOut)
@@ -258,4 +293,29 @@ def get_ingest_run(
     run = session.get(IngestRun, run_id)
     if run is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
-    return run
+    return _enrich_run(session, run)
+
+
+@router.post(
+    "/ingest/runs/{run_id}/retry",
+    response_model=IngestRunOut,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def retry_ingest_run(
+    run_id: UUID,
+    background_tasks: BackgroundTasks,
+    user: dict = Depends(get_current_user),  # noqa: B008
+    session: Session = Depends(get_session),  # noqa: B008
+):
+    """Re-enqueue a stuck/failed ingest run. Resets status to 'pending'
+    and schedules a fresh BackgroundTask."""
+    run = session.get(IngestRun, run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail="Run not found")
+    run.status = "pending"
+    run.started_at = None
+    run.finished_at = None
+    run.error = None
+    session.commit()
+    background_tasks.add_task(_run_ingest_background, run.id)
+    return _enrich_run(session, run)

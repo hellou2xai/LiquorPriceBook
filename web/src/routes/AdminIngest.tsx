@@ -50,6 +50,11 @@ export default function AdminIngest() {
     },
   });
 
+  const retryMutation = useMutation({
+    mutationFn: (id: string) => adminApi.retryRun(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["ingest-runs"] }),
+  });
+
   const onFileChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
@@ -67,7 +72,7 @@ export default function AdminIngest() {
   return (
     <PageStub
       title="Admin · Ingest"
-      subtitle="Upload a price-book PDF. The worker scrapes, normalises, and writes to the database."
+      subtitle="Upload a price-book PDF. The API scrapes, normalises, and writes to the database in the background."
     >
       <div className="space-y-6">
         <UploadCard
@@ -81,7 +86,12 @@ export default function AdminIngest() {
           errorMsg={errorMsg}
         />
 
-        <RunsTable runs={runsQuery.data ?? []} loading={runsQuery.isLoading} />
+        <RunsList
+          runs={runsQuery.data ?? []}
+          loading={runsQuery.isLoading}
+          onRetry={(id) => retryMutation.mutate(id)}
+          retryingId={retryMutation.variables ?? null}
+        />
       </div>
     </PageStub>
   );
@@ -153,63 +163,169 @@ function UploadCard({
   );
 }
 
-function RunsTable({ runs, loading }: { runs: IngestRun[]; loading: boolean }) {
+function RunsList({
+  runs,
+  loading,
+  onRetry,
+  retryingId,
+}: {
+  runs: IngestRun[];
+  loading: boolean;
+  onRetry: (id: string) => void;
+  retryingId: string | null;
+}) {
   return (
     <div className="rounded-lg border border-zinc-200 bg-white">
       <div className="border-b border-zinc-200 px-5 py-3">
         <h2 className="text-base font-medium text-zinc-900">Recent ingest runs</h2>
+        <p className="text-xs text-zinc-500 mt-0.5">
+          Live status: pending → running → completed (refreshes every 2s while active).
+        </p>
       </div>
-      <div className="overflow-x-auto">
-        <table className="min-w-full divide-y divide-zinc-200 text-sm">
-          <thead className="bg-zinc-50 text-left text-xs uppercase tracking-wide text-zinc-500">
-            <tr>
-              <th className="px-4 py-2">Status</th>
-              <th className="px-4 py-2">Started</th>
-              <th className="px-4 py-2">Finished</th>
-              <th className="px-4 py-2">Rows</th>
-              <th className="px-4 py-2">Run ID</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-zinc-100">
-            {loading ? (
-              <tr>
-                <td colSpan={5} className="px-4 py-6 text-center text-zinc-500">
-                  Loading…
-                </td>
-              </tr>
-            ) : runs.length === 0 ? (
-              <tr>
-                <td colSpan={5} className="px-4 py-6 text-center text-zinc-500">
-                  No ingest runs yet. Upload a PDF above to kick one off.
-                </td>
-              </tr>
-            ) : (
-              runs.map((r) => <RunRow key={r.id} run={r} />)
-            )}
-          </tbody>
-        </table>
-      </div>
+      <ul className="divide-y divide-zinc-100">
+        {loading ? (
+          <li className="px-5 py-6 text-center text-zinc-500 text-sm">Loading…</li>
+        ) : runs.length === 0 ? (
+          <li className="px-5 py-6 text-center text-zinc-500 text-sm">
+            No ingest runs yet. Upload a PDF above to kick one off.
+          </li>
+        ) : (
+          runs.map((r) => (
+            <RunRow key={r.id} run={r} onRetry={onRetry} retrying={retryingId === r.id} />
+          ))
+        )}
+      </ul>
     </div>
   );
 }
 
-function RunRow({ run }: { run: IngestRun }) {
+function RunRow({
+  run,
+  onRetry,
+  retrying,
+}: {
+  run: IngestRun;
+  onRetry: (id: string) => void;
+  retrying: boolean;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const rowCounts = run.rows_by_section ?? {};
   const totalRows = useMemo(
-    () => Object.values(run.rows_by_section ?? {}).reduce((a, b) => a + (b ?? 0), 0),
-    [run.rows_by_section],
+    () => Object.values(rowCounts).reduce((a, b) => a + (b ?? 0), 0),
+    [rowCounts],
   );
+  const dur = duration(run.started_at, run.finished_at);
+  const editionLabel =
+    run.book_year && run.book_month
+      ? `${run.book_year}-${String(run.book_month).padStart(2, "0")}`
+      : "—";
+  const stuck =
+    run.status === "pending" &&
+    Date.now() - new Date(run.created_at).getTime() > 120_000;
+
   return (
-    <tr>
-      <td className="whitespace-nowrap px-4 py-2">
+    <li className="px-5 py-3">
+      <div className="flex flex-wrap items-center gap-3 text-sm">
         <StatusBadge status={run.status} />
-      </td>
-      <td className="whitespace-nowrap px-4 py-2 text-zinc-700">{fmt(run.started_at)}</td>
-      <td className="whitespace-nowrap px-4 py-2 text-zinc-700">{fmt(run.finished_at)}</td>
-      <td className="whitespace-nowrap px-4 py-2 text-zinc-700 tabular-nums">
-        {run.status === "completed" ? totalRows.toLocaleString() : "—"}
-      </td>
-      <td className="whitespace-nowrap px-4 py-2 font-mono text-xs text-zinc-500">{run.id.slice(0, 8)}</td>
-    </tr>
+        <span className="font-mono text-xs text-zinc-700 tabular-nums">
+          {editionLabel}
+        </span>
+        <span className="text-zinc-600 flex-1 truncate" title={run.source_filename ?? ""}>
+          {run.distributor_name ?? run.distributor_slug ?? "—"} ·{" "}
+          {run.source_filename ?? "—"}
+        </span>
+        <span className="text-xs text-zinc-500 tabular-nums">
+          {run.status === "completed"
+            ? `${totalRows.toLocaleString()} rows · ${dur}`
+            : run.status === "running"
+              ? `running · ${dur}`
+              : run.status === "failed"
+                ? "failed"
+                : run.status === "pending"
+                  ? stuck
+                    ? "pending (stuck?)"
+                    : "queued"
+                  : run.status}
+        </span>
+        <button
+          onClick={() => setExpanded((v) => !v)}
+          className="text-xs text-zinc-500 hover:text-zinc-900"
+        >
+          {expanded ? "Hide" : "Details"}
+        </button>
+        {(run.status === "failed" || stuck) ? (
+          <button
+            onClick={() => onRetry(run.id)}
+            disabled={retrying}
+            className="text-xs text-amber-700 hover:text-amber-900 disabled:opacity-50"
+          >
+            {retrying ? "Retrying…" : "Retry"}
+          </button>
+        ) : null}
+      </div>
+
+      {expanded ? (
+        <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+          <DetailBlock label="Run ID" value={run.id} mono />
+          <DetailBlock label="Book edition ID" value={run.book_edition_id} mono />
+          <DetailBlock
+            label="Created"
+            value={new Date(run.created_at).toLocaleString()}
+          />
+          <DetailBlock
+            label="Started"
+            value={run.started_at ? new Date(run.started_at).toLocaleString() : "—"}
+          />
+          <DetailBlock
+            label="Finished"
+            value={run.finished_at ? new Date(run.finished_at).toLocaleString() : "—"}
+          />
+          <DetailBlock label="Source" value={run.source_filename ?? "—"} mono />
+          {Object.keys(rowCounts).length > 0 ? (
+            <div className="md:col-span-2">
+              <div className="text-zinc-500 mb-1">Rows by section</div>
+              <div className="rounded-md border border-zinc-200 bg-zinc-50 p-2">
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-x-4 gap-y-1 font-mono text-[11px]">
+                  {Object.entries(rowCounts).map(([k, v]) => (
+                    <div key={k} className="flex justify-between">
+                      <span className="text-zinc-600">{k}</span>
+                      <span className="tabular-nums text-zinc-900">
+                        {(v ?? 0).toLocaleString()}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ) : null}
+          {run.error ? (
+            <div className="md:col-span-2">
+              <div className="text-zinc-500 mb-1">Error</div>
+              <pre className="rounded-md border border-red-200 bg-red-50 p-2 text-[11px] text-red-900 overflow-x-auto">
+                {JSON.stringify(run.error, null, 2)}
+              </pre>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+    </li>
+  );
+}
+
+function DetailBlock({
+  label,
+  value,
+  mono = false,
+}: {
+  label: string;
+  value: string;
+  mono?: boolean;
+}) {
+  return (
+    <div>
+      <div className="text-zinc-500">{label}</div>
+      <div className={`text-zinc-800 ${mono ? "font-mono" : ""}`}>{value}</div>
+    </div>
   );
 }
 
@@ -231,13 +347,13 @@ function StatusBadge({ status }: { status: IngestRun["status"] }) {
   );
 }
 
-function fmt(ts: string | null): string {
-  if (!ts) return "—";
-  try {
-    return new Date(ts).toLocaleString();
-  } catch {
-    return ts;
-  }
+function duration(start: string | null, end: string | null): string {
+  if (!start) return "—";
+  const s = new Date(start).getTime();
+  const e = end ? new Date(end).getTime() : Date.now();
+  const sec = Math.max(0, Math.round((e - s) / 1000));
+  if (sec < 60) return `${sec}s`;
+  return `${Math.floor(sec / 60)}m ${sec % 60}s`;
 }
 
 // Refetch on mount when the user navigates into this page.

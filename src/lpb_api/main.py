@@ -33,14 +33,21 @@ def _init_sentry() -> None:
 
 
 def _recover_orphaned_ingest_runs() -> None:
-    """If the process restarted mid-ingest, any IngestRun left in 'running' is
-    orphaned. Mark them as failed so the UI doesn't spin forever and the admin
-    can re-upload. Safe to call repeatedly.
+    """If the process restarted while ingests were active, two failure modes:
+
+      * status='running' - the worker died mid-scrape. Mark failed so the
+        UI doesn't spin forever; admin can re-upload or hit the retry
+        endpoint.
+      * status='pending' for more than 60 seconds - the BackgroundTask
+        either never fired (process crashed before the task was scheduled)
+        or fired but its worker has long died. Re-enqueue it.
+
+    Safe to call repeatedly; idempotent.
     """
     import logging
-    from datetime import datetime
+    from datetime import datetime, timedelta
 
-    from sqlalchemy import update
+    from sqlalchemy import select, update
 
     from lpb_core.db import SessionLocal
     from lpb_core.db.models import IngestRun
@@ -48,18 +55,40 @@ def _recover_orphaned_ingest_runs() -> None:
     log = logging.getLogger("lpb_api.startup")
     try:
         with SessionLocal() as session:
-            result = session.execute(
+            now = datetime.now(UTC)
+            # 1. Bury 'running' orphans.
+            res_running = session.execute(
                 update(IngestRun)
                 .where(IngestRun.status == "running")
                 .values(
                     status="failed",
-                    finished_at=datetime.now(UTC),
+                    finished_at=now,
                     error={"reason": "interrupted by process restart"},
                 )
             )
-            if result.rowcount:
-                log.warning("recovered %d orphaned ingest runs", result.rowcount)
+            if res_running.rowcount:
+                log.warning("buried %d orphaned 'running' runs", res_running.rowcount)
+            # 2. Re-enqueue stuck 'pending' rows. We can't fire a
+            # FastAPI BackgroundTask from here (no request scope), so we
+            # spawn a thread per stuck run. They share the same process.
+            stuck = session.execute(
+                select(IngestRun.id).where(
+                    IngestRun.status == "pending",
+                    IngestRun.created_at < now - timedelta(seconds=60),
+                )
+            ).scalars().all()
             session.commit()
+
+        if stuck:
+            import threading
+
+            from lpb_api.routes.ingest import _run_ingest_background
+
+            log.warning("re-enqueuing %d stuck 'pending' runs", len(stuck))
+            for run_id in stuck:
+                threading.Thread(
+                    target=_run_ingest_background, args=(run_id,), daemon=True,
+                ).start()
     except Exception:  # noqa: BLE001
         log.exception("could not recover orphaned ingest runs")
 
