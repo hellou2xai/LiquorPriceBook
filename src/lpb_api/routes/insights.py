@@ -1,7 +1,8 @@
-"""Analytics endpoints: RIP ranker, closeouts, dashboard movers, alerts inbox.
+"""Analytics endpoints: RIP ranker, closeouts, combos, dashboard movers, alerts.
 
   GET /api/v1/rips                  RIP yield ranker
   GET /api/v1/closeouts             Inventory Reduction items + days-on-list
+  GET /api/v1/combos                Combo bundles for the current edition
   GET /api/v1/dashboard/movers      top price movers from mv_price_changes
   GET /api/v1/dashboard/watchlist-movers  movers intersected with user watchlist
   GET /api/v1/dashboard/alerts      recent AlertEvents for the tenant
@@ -24,6 +25,7 @@ from lpb_core.db.models import (
     BookEdition,
     Brand,
     Category,
+    Combo,
     InventoryReduction,
     Product,
     ProductEdition,
@@ -246,6 +248,60 @@ def list_closeouts(
             )
         )
     return out
+
+
+# ----- Combos -----
+
+class ComboRow(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    sku: str
+    subcategory: str | None
+    item_code: str | None
+    contains: str | None
+    front_line_price: Decimal | None
+
+
+@router.get("/combos", response_model=list[ComboRow])
+def list_combos(
+    distributor: str = Query("nj-allied"),
+    subcategory: str | None = Query(None),
+    search: str | None = Query(None),
+    limit: int = Query(500, ge=1, le=1000),
+    user: dict = Depends(get_current_user),  # noqa: B008
+    session: Session = Depends(get_session),  # noqa: B008
+):
+    edition = _current_edition(session, distributor)
+    stmt = (
+        select(
+            Combo.sku,
+            Combo.subcategory,
+            Combo.item_code,
+            Combo.contains,
+            Combo.front_line_price,
+        )
+        .where(Combo.book_edition_id == edition.id)
+    )
+    if subcategory:
+        stmt = stmt.where(func.lower(Combo.subcategory) == subcategory.lower())
+    if search:
+        pattern = f"%{search}%"
+        stmt = stmt.where(
+            Combo.contains.ilike(pattern)
+            | Combo.sku.ilike(pattern)
+            | Combo.item_code.ilike(pattern)
+        )
+    stmt = stmt.order_by(Combo.subcategory, Combo.sku).limit(limit)
+    rows = session.execute(stmt).all()
+    return [
+        ComboRow(
+            sku=r.sku,
+            subcategory=r.subcategory,
+            item_code=r.item_code,
+            contains=r.contains,
+            front_line_price=r.front_line_price,
+        )
+        for r in rows
+    ]
 
 
 # ----- Dashboard -----

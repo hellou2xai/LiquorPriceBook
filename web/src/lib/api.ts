@@ -229,6 +229,14 @@ export type CloseoutRow = {
   days_on_list: number;
 };
 
+export type ComboRow = {
+  sku: string;
+  subcategory: string | null;
+  item_code: string | null;
+  contains: string | null;
+  front_line_price: string | null;
+};
+
 export type MoverRow = {
   code: string;
   description: string | null;
@@ -325,6 +333,8 @@ export const insightsApi = {
   } = {}) => api<RipRow[]>(`/api/v1/rips${_qs(params)}`),
   closeouts: (params: { distributor?: string; min_pct?: number; limit?: number } = {}) =>
     api<CloseoutRow[]>(`/api/v1/closeouts${_qs(params)}`),
+  combos: (params: { distributor?: string; subcategory?: string; search?: string; limit?: number } = {}) =>
+    api<ComboRow[]>(`/api/v1/combos${_qs(params)}`),
   movers: (params: { distributor?: string; direction?: "up" | "down" | "any"; limit?: number } = {}) =>
     api<MoverRow[]>(`/api/v1/dashboard/movers${_qs(params)}`),
   watchlistMovers: (distributor = "nj-allied") =>
