@@ -262,7 +262,7 @@ def _run_prescraped_background(ingest_run_id, sections: dict) -> None:
             run_ingest(bg_session, ingest_run_id, prescraped_sections=sections)
     except Exception as exc:  # noqa: BLE001
         log.exception("background prescraped ingest failed run_id=%s", ingest_run_id)
-        from datetime import datetime
+        from datetime import datetime  # noqa: I001
         from sqlalchemy import update
         try:
             with SessionLocal() as cleanup:
