@@ -285,6 +285,20 @@ export type OrderItem = {
   rip_btl_price: string | null;
   effective_case: string | null;
   effective_btl: string | null;
+  rip_discount_pct: string | null;
+  // Buy-timing intelligence
+  prev_case_cost: string | null;
+  price_pct_change: string | null;
+  price_direction: string | null;
+  low_12m: string | null;
+  high_12m: string | null;
+  avg_12m: string | null;
+  months_at_price: number | null;
+  at_12m_low: boolean;
+  at_12m_high: boolean;
+  had_rip_prev: boolean;
+  buy_signal: string;
+  buy_reasons: string[];
   target_case_price: string | null;
   target_btl_price: string | null;
   notes: string | null;

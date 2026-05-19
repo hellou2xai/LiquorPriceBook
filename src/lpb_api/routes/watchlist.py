@@ -27,6 +27,7 @@ from sqlalchemy.orm import Session, aliased
 from lpb_core.db import get_session
 from lpb_core.db.models import (
     AuditLog,
+    BookEdition,
     Brand,
     Category,
     Distributor,
@@ -76,6 +77,21 @@ class OrderItemOut(BaseModel):
     rip_btl_price: Decimal | None = None
     effective_case: Decimal | None = None
     effective_btl: Decimal | None = None
+    rip_discount_pct: Decimal | None = None  # (save / case_cost) * 100
+    # Buy-timing intelligence
+    prev_case_cost: Decimal | None = None
+    price_pct_change: Decimal | None = None
+    price_direction: str | None = None  # "up", "down", "flat", "new"
+    low_12m: Decimal | None = None
+    high_12m: Decimal | None = None
+    avg_12m: Decimal | None = None
+    months_at_price: int | None = None
+    at_12m_low: bool = False
+    at_12m_high: bool = False
+    had_rip_prev: bool = False
+    buy_signal: str = "HOLD"  # BUY_NOW, GOOD_BUY, HOLD, DEFER
+    buy_reasons: list[str] = []
+    # User fields
     target_case_price: Decimal | None = None
     target_btl_price: Decimal | None = None
     notes: str | None = None
@@ -256,6 +272,54 @@ def watchlist_order(
 
     rows = session.execute(stmt).all()
 
+    if not rows:
+        return []
+
+    # ── Bulk price history for buy-timing intelligence ──
+    # Collect product_ids from main query to fetch history in one shot
+    product_codes = [r.product_code for r in rows]
+    hist_stmt = (
+        select(
+            Product.code,
+            BookEdition.year,
+            BookEdition.month,
+            ProductEdition.case_cost,
+        )
+        .select_from(ProductEdition)
+        .join(Product, Product.id == ProductEdition.product_id)
+        .join(BookEdition, BookEdition.id == ProductEdition.book_edition_id)
+        .where(Product.code.in_(product_codes))
+        .order_by(Product.code, asc(BookEdition.year), asc(BookEdition.month))
+    )
+    hist_rows = session.execute(hist_stmt).all()
+
+    # Build per-product price history
+    from collections import defaultdict
+    history_map: dict[str, list[Decimal | None]] = defaultdict(list)
+    for hr in hist_rows:
+        history_map[hr.code].append(hr.case_cost)
+
+    # Check which products had RIP in previous edition
+    prev_editions = session.execute(
+        select(BookEdition)
+        .join(Distributor, Distributor.id == BookEdition.distributor_id)
+        .where(Distributor.slug == "nj-allied")
+        .order_by(desc(BookEdition.year), desc(BookEdition.month))
+        .limit(2)
+    ).scalars().all()
+    prev_rip_codes: set[str] = set()
+    if len(prev_editions) >= 2:
+        prev_ed = prev_editions[1]  # second-most-recent edition
+        prev_rip_rows = session.execute(
+            select(Product.code)
+            .select_from(RipOffer)
+            .join(ProductEdition, ProductEdition.id == RipOffer.product_edition_id)
+            .join(Product, Product.id == ProductEdition.product_id)
+            .where(ProductEdition.book_edition_id == prev_ed.id)
+            .distinct()
+        ).scalars().all()
+        prev_rip_codes = set(prev_rip_rows)
+
     results: list[OrderItemOut] = []
     for r in rows:
         has_rip = r.rip_save_amount is not None
@@ -271,6 +335,109 @@ def watchlist_order(
             effective_btl = r.rip_btl_price
         else:
             effective_btl = r.btl_cost
+
+        # ── Compute trend metrics ──
+        prices = [p for p in history_map.get(r.product_code, []) if p is not None]
+        prev_case_cost = None
+        price_pct_change = None
+        price_direction = "new"
+        low_12m = None
+        high_12m = None
+        avg_12m = None
+        months_at_price = None
+        at_12m_low = False
+        at_12m_high = False
+
+        if len(prices) >= 1 and r.case_cost is not None:
+            recent = prices[-12:]  # last 12 months
+            low_12m = min(recent)
+            high_12m = max(recent)
+            avg_12m = Decimal(str(round(sum(recent) / len(recent), 2)))
+            at_12m_low = r.case_cost <= low_12m
+            at_12m_high = r.case_cost >= high_12m
+
+            # Months at current price (consecutive from end)
+            months_at_price = 0
+            for p in reversed(prices):
+                if p == r.case_cost:
+                    months_at_price += 1
+                else:
+                    break
+
+            if len(prices) >= 2:
+                prev_case_cost = prices[-2]
+                if prev_case_cost and prev_case_cost != 0:
+                    change = r.case_cost - prev_case_cost
+                    price_pct_change = Decimal(
+                        str(round(float(change) / float(prev_case_cost) * 100, 1))
+                    )
+                    if change < 0:
+                        price_direction = "down"
+                    elif change > 0:
+                        price_direction = "up"
+                    else:
+                        price_direction = "flat"
+
+        had_rip_prev = r.product_code in prev_rip_codes
+
+        # ── Buy signal ──
+        signal = "HOLD"
+        reasons: list[str] = []
+
+        # Target price hit
+        if r.target_case_price and effective_case and effective_case <= r.target_case_price:
+            signal = "BUY_NOW"
+            reasons.append("Hit your target price")
+
+        # At 12-month low
+        if at_12m_low and r.case_cost is not None:
+            if signal != "BUY_NOW":
+                signal = "BUY_NOW" if has_rip else "GOOD_BUY"
+            reasons.append("At 12-month low")
+
+        # New RIP appeared
+        if has_rip and not had_rip_prev:
+            if signal not in ("BUY_NOW",):
+                signal = "BUY_NOW"
+            reasons.append("New RIP just appeared")
+        elif has_rip and had_rip_prev:
+            if signal == "HOLD":
+                signal = "GOOD_BUY"
+            reasons.append("Active RIP")
+
+        # Price dropped this month
+        if price_direction == "down" and price_pct_change is not None:
+            if abs(float(price_pct_change)) >= 5:
+                if signal not in ("BUY_NOW",):
+                    signal = "BUY_NOW" if has_rip else "GOOD_BUY"
+                reasons.append(f"Price dropped {abs(float(price_pct_change)):.1f}%")
+            elif signal == "HOLD":
+                signal = "GOOD_BUY"
+                reasons.append("Price dropped this month")
+
+        # RIP just expired
+        if had_rip_prev and not has_rip:
+            if signal in ("HOLD",):
+                signal = "DEFER"
+            reasons.append("RIP expired — price may adjust")
+
+        # At 12-month high
+        if at_12m_high and not at_12m_low and r.case_cost is not None:
+            if signal in ("HOLD",):
+                signal = "DEFER"
+            reasons.append("At 12-month high")
+
+        # Price trending up
+        if price_direction == "up" and not has_rip and signal in ("HOLD",):
+            signal = "DEFER"
+            reasons.append("Price trending up")
+
+        # Stable price, no urgency
+        if months_at_price and months_at_price >= 6 and signal == "HOLD":
+            reasons.append(f"Price stable for {months_at_price} months")
+
+        if not reasons:
+            reasons.append("No strong signal — standard pricing")
 
         results.append(
             OrderItemOut(
@@ -292,6 +459,23 @@ def watchlist_order(
                 rip_btl_price=r.rip_btl_price,
                 effective_case=effective_case,
                 effective_btl=effective_btl,
+                rip_discount_pct=(
+                    Decimal(str(round(float(r.rip_save_amount) / float(r.case_cost) * 100, 1)))
+                    if has_rip and r.rip_save_amount and r.case_cost and float(r.case_cost) > 0
+                    else None
+                ),
+                prev_case_cost=prev_case_cost,
+                price_pct_change=price_pct_change,
+                price_direction=price_direction,
+                low_12m=low_12m,
+                high_12m=high_12m,
+                avg_12m=avg_12m,
+                months_at_price=months_at_price,
+                at_12m_low=at_12m_low,
+                at_12m_high=at_12m_high,
+                had_rip_prev=had_rip_prev,
+                buy_signal=signal,
+                buy_reasons=reasons,
                 target_case_price=r.target_case_price,
                 target_btl_price=r.target_btl_price,
                 notes=r.notes,
