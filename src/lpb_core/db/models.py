@@ -90,8 +90,12 @@ class Distributor(Base):
     id: Mapped[UUID] = _uuid_pk()
     slug: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
-    state: Mapped[str] = mapped_column(String(2), nullable=False, default="NJ")
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    state: Mapped[str] = mapped_column(
+        String(2), nullable=False, default="NJ", server_default=text("'NJ'")
+    )
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=text("true")
+    )
     created_at: Mapped[datetime] = _now()
 
 
@@ -109,7 +113,9 @@ class Category(Base):
     raw_aliases: Mapped[list] = mapped_column(
         JSONB, nullable=False, default=list, server_default=text("'[]'::jsonb")
     )
-    sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    sort_order: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default=text("0")
+    )
     created_at: Mapped[datetime] = _now()
 
 
@@ -158,7 +164,9 @@ class BookEdition(Base):
         ForeignKey("book_editions.id", ondelete="SET NULL"),
     )
     scraped_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=text("true")
+    )
     created_at: Mapped[datetime] = _now()
 
     __table_args__ = (
@@ -184,7 +192,9 @@ class IngestRun(Base):
         ForeignKey("book_editions.id", ondelete="CASCADE"),
         nullable=False,
     )
-    status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending")
+    status: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="pending", server_default=text("'pending'")
+    )
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     rows_by_section: Mapped[dict] = mapped_column(
@@ -514,7 +524,9 @@ class KegListEntry(Base):
     value_per_750ml: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
     best_btl_reg: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
     per_ounce_estimate: Mapped[Decimal | None] = mapped_column(Numeric(8, 4))
-    in_stock: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    in_stock: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
     linked_product_id: Mapped[UUID | None] = mapped_column(
         PgUUID(as_uuid=True), ForeignKey("products.id", ondelete="SET NULL")
     )
@@ -543,7 +555,9 @@ class Tenant(Base):
     slug: Mapped[str] = mapped_column(String(128), unique=True, nullable=False)
     display_name: Mapped[str] = mapped_column(String(255), nullable=False)
     clerk_org_id: Mapped[str | None] = mapped_column(String(128), unique=True)
-    plan: Mapped[str] = mapped_column(String(32), nullable=False, default="beta")
+    plan: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="beta", server_default=text("'beta'")
+    )
     created_at: Mapped[datetime] = _now()
     updated_at: Mapped[datetime] = _updated()
 
@@ -562,7 +576,9 @@ class User(Base):
     clerk_user_id: Mapped[str] = mapped_column(String(128), unique=True, nullable=False)
     email: Mapped[str] = mapped_column(String(255), nullable=False)
     display_name: Mapped[str | None] = mapped_column(String(255))
-    role: Mapped[str] = mapped_column(String(32), nullable=False, default="member")
+    role: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="member", server_default=text("'member'")
+    )
     created_at: Mapped[datetime] = _now()
     updated_at: Mapped[datetime] = _updated()
 
@@ -585,7 +601,9 @@ class Watchlist(Base):
         nullable=False,
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
-    is_default: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    is_default: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
     created_at: Mapped[datetime] = _now()
     updated_at: Mapped[datetime] = _updated()
 
@@ -676,8 +694,12 @@ class AlertConfig(Base):
     params: Mapped[dict] = mapped_column(
         JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb")
     )
-    channel: Mapped[str] = mapped_column(String(32), nullable=False, default="email")
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    channel: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="email", server_default=text("'email'")
+    )
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=text("true")
+    )
     created_at: Mapped[datetime] = _now()
     updated_at: Mapped[datetime] = _updated()
 

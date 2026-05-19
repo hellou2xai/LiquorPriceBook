@@ -138,12 +138,13 @@ CATEGORIES = [
 
 def upgrade() -> None:
     conn = op.get_bind()
-    # Distributors
+    # Distributors. is_active is set explicitly so the seed works even on a
+    # schema variant where the column lacks a server-side default.
     for slug, name, state in DISTRIBUTORS:
         conn.execute(
             text(
-                "INSERT INTO distributors (slug, name, state) "
-                "VALUES (:slug, :name, :state) "
+                "INSERT INTO distributors (slug, name, state, is_active) "
+                "VALUES (:slug, :name, :state, TRUE) "
                 "ON CONFLICT (slug) DO NOTHING"
             ),
             {"slug": slug, "name": name, "state": state},
