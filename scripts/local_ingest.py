@@ -21,9 +21,18 @@ import os
 import re
 import sys
 import time
+from datetime import date, datetime
 from pathlib import Path
-from urllib.request import Request, urlopen
 from urllib.error import HTTPError
+from urllib.request import Request, urlopen
+
+
+class _DateEncoder(json.JSONEncoder):
+    """Serialize date/datetime objects the scraper returns."""
+    def default(self, o):
+        if isinstance(o, (date, datetime)):
+            return o.isoformat()
+        return super().default(o)
 
 # Add project root to path so templates import works
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -72,7 +81,7 @@ def _post_prescraped(
 ) -> dict:
     """POST the prescraped JSON to the Render API and return the response."""
     url = f"{api_url}/api/v1/admin/ingest/prescraped"
-    body = json.dumps(payload).encode("utf-8")
+    body = json.dumps(payload, cls=_DateEncoder).encode("utf-8")
     req = Request(
         url,
         data=body,
@@ -187,7 +196,7 @@ def main(argv: list[str] | None = None) -> int:
         "month": month,
         "sections": sections,
     }
-    payload_size = len(json.dumps(payload))
+    payload_size = len(json.dumps(payload, cls=_DateEncoder))
     log.info("Uploading %s of structured data to %s ...", f"{payload_size:,} bytes", args.api_url)
 
     result = _post_prescraped(args.api_url, args.token, payload)
