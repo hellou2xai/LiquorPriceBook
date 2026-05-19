@@ -91,7 +91,7 @@ services:
   - type: web
     name: lpb-web
     runtime: static
-    region: ohio
+    # Static sites are global at Render's edge - they don't take a region.
     plan: starter
     buildCommand: cd web && npm ci && npm run build
     staticPublishPath: web/dist
