@@ -1,0 +1,141 @@
+# Render Blueprint for LiquorPriceBook
+# Deploy: connect this repo to Render, choose "Blueprint", select this file.
+# Docs: https://render.com/docs/blueprint-spec
+
+databases:
+  - name: lpb-db
+    databaseName: liquorpricebook
+    plan: basic-256mb
+    region: ohio
+    postgresMajorVersion: "16"
+    ipAllowList: []   # private only; access via internal connection string
+
+services:
+  # -------------------------------------------------------------------------
+  # API: FastAPI web service. Public HTTPS endpoint.
+  # -------------------------------------------------------------------------
+  - type: web
+    name: lpb-api
+    runtime: python
+    region: ohio
+    plan: starter
+    pythonVersion: "3.11"
+    buildCommand: pip install -e .
+    # Runs once after build + before the new instance receives traffic.
+    # Migrations land here so the DB is in sync before the new app version
+    # starts serving requests.
+    preDeployCommand: alembic upgrade head
+    startCommand: uvicorn lpb_api.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /healthz
+    autoDeploy: true
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: lpb-db
+          property: connectionString
+      - key: APP_ENV
+        value: production
+      - key: APP_DOMAIN
+        value: liquorpricebook.com
+      - key: WEB_ORIGIN
+        value: https://liquorpricebook.com
+      # Interim static admin auth. Override in the Render dashboard for any
+      # public deploy (and replace with Clerk JWT verification once wired).
+      - key: LPB_ADMIN_USERNAME
+        value: admin
+      - key: LPB_ADMIN_PASSWORD
+        sync: false
+      - key: LPB_ADMIN_TOKEN
+        sync: false
+      # secrets - set in Render dashboard, NOT committed
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: SENTRY_DSN
+        sync: false
+
+  # -------------------------------------------------------------------------
+  # Worker: background job runner. Polls ingest_runs and AI jobs.
+  # -------------------------------------------------------------------------
+  - type: worker
+    name: lpb-worker
+    runtime: python
+    region: ohio
+    plan: starter
+    pythonVersion: "3.11"
+    buildCommand: pip install -e .
+    startCommand: python -m lpb_worker.main
+    autoDeploy: true
+    disk:
+      name: lpb-worker-data
+      mountPath: /var/data
+      sizeGB: 5
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: lpb-db
+          property: connectionString
+      - key: APP_ENV
+        value: production
+      - key: PDF_STORAGE_PATH
+        value: /var/data/pdfs
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: SENTRY_DSN
+        sync: false
+
+  # -------------------------------------------------------------------------
+  # Web: React SPA, static site.
+  # -------------------------------------------------------------------------
+  - type: web
+    name: lpb-web
+    runtime: static
+    region: ohio
+    plan: starter
+    buildCommand: cd web && npm ci && npm run build
+    staticPublishPath: web/dist
+    pullRequestPreviewsEnabled: true
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: VITE_API_URL
+        value: https://lpb-api.onrender.com
+    headers:
+      - path: /*
+        name: X-Frame-Options
+        value: DENY
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+      - path: /*
+        name: Referrer-Policy
+        value: strict-origin-when-cross-origin
+
+  # -------------------------------------------------------------------------
+  # Cron: monthly nudge to admin to upload the new price book.
+  # Distributors file the new CPL with ABC by the 15th of each month;
+  # we run on the 16th UTC so the book is already public.
+  # -------------------------------------------------------------------------
+  - type: cron
+    name: lpb-cron-ingest-nudge
+    runtime: python
+    region: ohio
+    plan: starter
+    pythonVersion: "3.11"
+    schedule: "0 13 16 * *"   # 16th of each month at 13:00 UTC (8am EST)
+    buildCommand: pip install -e .
+    startCommand: python -m lpb_worker.jobs.ingest_nudge
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: lpb-db
+          property: connectionString
+      - key: RESEND_API_KEY
+        sync: false
+      - key: SENTRY_DSN
+        sync: false

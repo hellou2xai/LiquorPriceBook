@@ -5,6 +5,8 @@ __pycache__/
 .venv/
 venv/
 .env
+.env.local
+.env.*.local
 
 # IDE / OS
 .vscode/
@@ -19,3 +21,25 @@ Thumbs.db
 
 # Excel lock files
 ~$*.xlsx
+
+# Node / web
+node_modules/
+web/dist/
+web/.vite/
+
+# Build artifacts
+dist/
+build/
+*.tgz
+
+# Coverage / cache
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+htmlcov/
+.coverage
+
+# Render / local artifacts
+/var/data/
+*.local
+

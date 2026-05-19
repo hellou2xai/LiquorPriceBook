@@ -1,0 +1,60 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "liquorpricebook"
+version = "0.1.0"
+description = "Pricing analytics for NJ liquor retailers"
+requires-python = ">=3.11"
+dependencies = [
+    # Web framework
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "pydantic>=2.9",
+    "pydantic-settings>=2.6",
+    # Database
+    "sqlalchemy>=2.0",
+    "alembic>=1.14",
+    "psycopg[binary]>=3.2",
+    # Auth
+    "pyjwt[crypto]>=2.10",
+    "httpx>=0.28",
+    # PDF scraping (already a dep of templates/NjAllied)
+    "pdfplumber>=0.11",
+    "pandas>=2.2",
+    "openpyxl>=3.1",
+    # AI
+    "anthropic>=0.42",
+    # Email
+    "resend>=2.4",
+    # Observability
+    "sentry-sdk[fastapi]>=2.18",
+    "structlog>=24.4",
+    # Utilities
+    "python-multipart>=0.0.18",
+    "tenacity>=9.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "httpx>=0.28",
+    "ruff>=0.8",
+    "mypy>=1.13",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/lpb_core", "src/lpb_api", "src/lpb_worker"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"

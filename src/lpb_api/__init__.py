@@ -1,0 +1,1 @@
+"""LiquorPriceBook FastAPI app."""
