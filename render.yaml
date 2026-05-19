@@ -42,8 +42,9 @@ services:
     startCommand: uvicorn lpb_api.main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /healthz
     autoDeploy: true
-    domains:
-      - api.ordering.celr.ai
+    # Custom domain api.ordering.celr.ai is attached via Render dashboard
+    # after first deploy (avoids blueprint clash when an old service still
+    # holds the domain).
     envVars:
       - key: DATABASE_URL
         fromDatabase:
@@ -81,8 +82,8 @@ services:
     buildCommand: cd web && npm ci && npm run build
     staticPublishPath: web/dist
     pullRequestPreviewsEnabled: true
-    domains:
-      - ordering.celr.ai
+    # Custom domain ordering.celr.ai is attached via Render dashboard after
+    # first deploy.
     routes:
       - type: rewrite
         source: /*
