@@ -276,6 +276,12 @@ def _scrape_pdf_bytes(pdf_bytes: bytes, source_filename: str) -> dict[str, list[
 # upserts
 # ---------------------------------------------------------------------------
 
+def _batched_insert(session: Session, table, payload: list[dict[str, Any]], batch_size: int = 2000):
+    """Insert in batches to stay under psycopg's 65,535 parameter limit."""
+    for i in range(0, len(payload), batch_size):
+        session.execute(pg_insert(table).values(payload[i : i + batch_size]))
+
+
 def _upsert_products_and_editions(
     *,
     session: Session,
@@ -300,7 +306,7 @@ def _upsert_products_and_editions(
     if not by_code:
         return 0
 
-    # Upsert products in bulk.
+    # Upsert products in batches (4 cols × ~13k rows can approach the limit).
     product_payload = [
         {
             "distributor_id": distributor_id,
@@ -310,15 +316,17 @@ def _upsert_products_and_editions(
         }
         for code in by_code
     ]
-    stmt = (
-        pg_insert(Product)
-        .values(product_payload)
-        .on_conflict_do_update(
-            index_elements=["distributor_id", "code"],
-            set_={"last_seen_in_edition_id": book_edition_id},
+    for i in range(0, len(product_payload), 4000):
+        batch = product_payload[i : i + 4000]
+        stmt = (
+            pg_insert(Product)
+            .values(batch)
+            .on_conflict_do_update(
+                index_elements=["distributor_id", "code"],
+                set_={"last_seen_in_edition_id": book_edition_id},
+            )
         )
-    )
-    session.execute(stmt)
+        session.execute(stmt)
     session.flush()
 
     # Map code -> product_id for the editions insert.
@@ -367,7 +375,7 @@ def _upsert_products_and_editions(
             ProductEdition.book_edition_id == book_edition_id
         )
     )
-    session.execute(pg_insert(ProductEdition).values(edition_payload))
+    _batched_insert(session, ProductEdition, edition_payload)
     session.flush()
     return len(edition_payload)
 
