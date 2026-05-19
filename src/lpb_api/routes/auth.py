@@ -30,16 +30,18 @@ router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
 
 def _admin_username() -> str:
-    return os.environ.get("LPB_ADMIN_USERNAME", "admin")
+    # strip() defensively - dashboard env-var editors sometimes include trailing
+    # whitespace that breaks secrets.compare_digest later.
+    return (os.environ.get("LPB_ADMIN_USERNAME") or "admin").strip()
 
 
 def _admin_password() -> str:
-    return os.environ.get("LPB_ADMIN_PASSWORD", "admin")
+    return (os.environ.get("LPB_ADMIN_PASSWORD") or "admin").strip()
 
 
 def _admin_token() -> str:
     """The single fixed bearer token returned on successful login."""
-    return os.environ.get("LPB_ADMIN_TOKEN", "lpb-static-admin-token")
+    return (os.environ.get("LPB_ADMIN_TOKEN") or "lpb-static-admin-token").strip()
 
 
 class LoginRequest(BaseModel):
