@@ -19,7 +19,6 @@ services:
     runtime: python
     region: ohio
     plan: starter
-    pythonVersion: "3.11"
     buildCommand: pip install -e .
     # Runs once after build + before the new instance receives traffic.
     # Migrations land here so the DB is in sync before the new app version
@@ -63,7 +62,6 @@ services:
     runtime: python
     region: ohio
     plan: starter
-    pythonVersion: "3.11"
     buildCommand: pip install -e .
     startCommand: python -m lpb_worker.main
     autoDeploy: true
@@ -126,7 +124,6 @@ services:
     runtime: python
     region: ohio
     plan: starter
-    pythonVersion: "3.11"
     schedule: "0 13 16 * *"   # 16th of each month at 13:00 UTC (8am EST)
     buildCommand: pip install -e .
     startCommand: python -m lpb_worker.jobs.ingest_nudge
