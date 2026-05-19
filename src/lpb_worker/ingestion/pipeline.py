@@ -230,6 +230,7 @@ def run_ingest(
         evaluate_alerts(session, edition_id)
     except Exception:  # noqa: BLE001
         log.exception("alert evaluation failed; ingest still considered successful")
+        session.rollback()  # clear PendingRollbackError so Stage 6 can commit
 
     # ---- Stage 6: Mark complete ----
     session.execute(
