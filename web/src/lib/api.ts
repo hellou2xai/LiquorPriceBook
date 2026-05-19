@@ -266,6 +266,31 @@ export type WatchlistItem = {
   created_at: string;
 };
 
+export type OrderItem = {
+  product_code: string;
+  description: string | null;
+  size: string | null;
+  pack: number | null;
+  category_slug: string | null;
+  category_display: string | null;
+  brand_slug: string | null;
+  brand_display: string | null;
+  case_cost: string | null;
+  btl_cost: string | null;
+  has_rip: boolean;
+  rip_tier: string | null;
+  rip_tier_cases: number | null;
+  rip_save_amount: string | null;
+  rip_case_price: string | null;
+  rip_btl_price: string | null;
+  effective_case: string | null;
+  effective_btl: string | null;
+  target_case_price: string | null;
+  target_btl_price: string | null;
+  notes: string | null;
+  created_at: string;
+};
+
 export type Note = {
   id: string;
   product_code: string;
@@ -367,6 +392,8 @@ export const watchlistApi = {
     ),
   remove: (code: string, distributor = "nj-allied") =>
     api<void>(`/api/v1/watchlist/items/${code}${_qs({ distributor })}`, { method: "DELETE" }),
+  order: (params: { search?: string; category?: string; sort?: string } = {}) =>
+    api<OrderItem[]>(`/api/v1/watchlist/order${_qs(params)}`),
 };
 
 export const notesApi = {

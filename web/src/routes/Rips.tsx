@@ -1,13 +1,22 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 
-import { insightsApi } from "../lib/api";
+import { insightsApi, watchlistApi } from "../lib/api";
 import { money } from "../lib/fmt";
+import FavoriteButton from "../components/FavoriteButton";
 
 export default function Rips() {
   const [minPct, setMinPct] = useState(0);
   const [tierMax, setTierMax] = useState<number | "">("");
+
+  const wlQ = useQuery({ queryKey: ["watchlist"], queryFn: () => watchlistApi.list() });
+  const favCodes = useMemo(() => new Set((wlQ.data ?? []).map((w) => w.product_code)), [wlQ.data]);
+  const favNotes = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const w of wlQ.data ?? []) if (w.notes) m.set(w.product_code, w.notes);
+    return m;
+  }, [wlQ.data]);
 
   const ripsQ = useQuery({
     queryKey: ["rips", { minPct, tierMax }],
@@ -65,6 +74,7 @@ export default function Rips() {
           <table className="min-w-full divide-y divide-zinc-200 text-sm">
             <thead className="bg-zinc-50 text-left text-xs uppercase tracking-wide text-zinc-500">
               <tr>
+                <th className="px-3 py-2 w-8"></th>
                 <th className="px-4 py-2">Code</th>
                 <th className="px-4 py-2">Description</th>
                 <th className="px-4 py-2">Size</th>
@@ -77,12 +87,15 @@ export default function Rips() {
             </thead>
             <tbody className="divide-y divide-zinc-100">
               {ripsQ.isLoading ? (
-                <tr><td colSpan={8} className="px-4 py-6 text-center text-zinc-500">Loading…</td></tr>
+                <tr><td colSpan={9} className="px-4 py-6 text-center text-zinc-500">Loading…</td></tr>
               ) : (ripsQ.data ?? []).length === 0 ? (
-                <tr><td colSpan={8} className="px-4 py-6 text-center text-zinc-500">No RIPs match.</td></tr>
+                <tr><td colSpan={9} className="px-4 py-6 text-center text-zinc-500">No RIPs match.</td></tr>
               ) : (
                 ripsQ.data!.map((r, i) => (
                   <tr key={`${r.code}-${r.tier}-${i}`} className="hover:bg-zinc-50">
+                    <td className="px-3 py-2">
+                      <FavoriteButton code={r.code} isFavorite={favCodes.has(r.code)} note={favNotes.get(r.code)} showNote />
+                    </td>
                     <td className="px-4 py-2 font-mono text-xs">
                       <Link to={`/catalog/${r.code}`} className="hover:underline">{r.code}</Link>
                     </td>

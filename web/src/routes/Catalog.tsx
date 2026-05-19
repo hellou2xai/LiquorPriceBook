@@ -2,8 +2,9 @@ import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 
-import { catalogApi } from "../lib/api";
+import { catalogApi, watchlistApi } from "../lib/api";
 import { money, pct, pctClass } from "../lib/fmt";
+import FavoriteButton from "../components/FavoriteButton";
 
 const PAGE_SIZE = 50;
 
@@ -22,6 +23,14 @@ export default function Catalog() {
     const t = setTimeout(() => setDebouncedSearch(search), 250);
     return () => clearTimeout(t);
   }, [search]);
+
+  const wlQ = useQuery({ queryKey: ["watchlist"], queryFn: () => watchlistApi.list() });
+  const favCodes = useMemo(() => new Set((wlQ.data ?? []).map((w) => w.product_code)), [wlQ.data]);
+  const favNotes = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const w of wlQ.data ?? []) if (w.notes) m.set(w.product_code, w.notes);
+    return m;
+  }, [wlQ.data]);
 
   const categoriesQ = useQuery({
     queryKey: ["categories"],
@@ -125,6 +134,7 @@ export default function Catalog() {
           <table className="min-w-full divide-y divide-zinc-200 text-sm">
             <thead className="bg-zinc-50 text-left text-xs uppercase tracking-wide text-zinc-500">
               <tr>
+                <th className="px-3 py-2 w-8"></th>
                 <th className="px-4 py-2">Code</th>
                 <th className="px-4 py-2">Description</th>
                 <th className="px-4 py-2">Size</th>
@@ -136,12 +146,15 @@ export default function Catalog() {
             </thead>
             <tbody className="divide-y divide-zinc-100">
               {productsQ.isLoading ? (
-                <tr><td colSpan={7} className="px-4 py-6 text-center text-zinc-500">Loading…</td></tr>
+                <tr><td colSpan={8} className="px-4 py-6 text-center text-zinc-500">Loading…</td></tr>
               ) : productsQ.data?.items.length === 0 ? (
-                <tr><td colSpan={7} className="px-4 py-6 text-center text-zinc-500">No products match.</td></tr>
+                <tr><td colSpan={8} className="px-4 py-6 text-center text-zinc-500">No products match.</td></tr>
               ) : (
                 productsQ.data?.items.map((p) => (
                   <tr key={p.code} className="hover:bg-zinc-50">
+                    <td className="px-3 py-2">
+                      <FavoriteButton code={p.code} isFavorite={favCodes.has(p.code)} note={favNotes.get(p.code)} showNote />
+                    </td>
                     <td className="px-4 py-2 font-mono text-xs">
                       <Link to={`/catalog/${p.code}`} className="text-zinc-700 hover:text-zinc-900 hover:underline">
                         {p.code}
