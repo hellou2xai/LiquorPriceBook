@@ -16,6 +16,7 @@ from sqlalchemy import select, update
 from lpb_core.db import SessionLocal
 from lpb_core.db.models import IngestRun
 from lpb_core.settings import settings
+from lpb_worker.ingestion.pipeline import run_ingest
 
 POLL_INTERVAL_SECONDS = 5
 
@@ -69,21 +70,13 @@ def claim_next_run() -> IngestRun | None:
 def process_ingest_run(run: IngestRun) -> None:
     """Run the ingestion pipeline for one ``IngestRun``.
 
-    Placeholder for now - the real pipeline (PDF -> staging -> cleaning ->
-    final tables -> materialised views -> alert evaluation) lands in week 3-4.
+    Each call opens its own session, runs the pipeline (which scrapes the PDF,
+    normalises, upserts every section, and updates the run row), and commits.
     """
     log.info("processing ingest run id=%s book_edition_id=%s",
              run.id, run.book_edition_id)
     with SessionLocal() as session:
-        session.execute(
-            update(IngestRun)
-            .where(IngestRun.id == run.id)
-            .values(
-                status="completed",
-                finished_at=datetime.now(UTC),
-            )
-        )
-        session.commit()
+        run_ingest(session, run.id)
 
 
 def main() -> int:

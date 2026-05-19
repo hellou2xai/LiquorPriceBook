@@ -46,7 +46,7 @@ dev = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/lpb_core", "src/lpb_api", "src/lpb_worker"]
+packages = ["src/lpb_core", "src/lpb_api", "src/lpb_worker", "templates"]
 
 [tool.ruff]
 line-length = 100

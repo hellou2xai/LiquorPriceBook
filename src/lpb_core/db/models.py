@@ -38,6 +38,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    LargeBinary,
     Numeric,
     String,
     Text,
@@ -47,7 +48,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, deferred, mapped_column
 
 from .base import Base
 
@@ -159,6 +160,11 @@ class BookEdition(Base):
     source_filename: Mapped[str] = mapped_column(String(512), nullable=False)
     content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     storage_uri: Mapped[str | None] = mapped_column(String(1024))
+    # PDF bytes live in Postgres for MVP. Deferred so list queries don't pull
+    # 5MB per row. v1.2 migrates to object storage and uses storage_uri.
+    pdf_bytes: Mapped[bytes | None] = deferred(
+        mapped_column(LargeBinary, nullable=True)
+    )
     supersedes_id: Mapped[UUID | None] = mapped_column(
         PgUUID(as_uuid=True),
         ForeignKey("book_editions.id", ondelete="SET NULL"),
