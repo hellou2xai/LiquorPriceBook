@@ -237,6 +237,28 @@ export type ComboRow = {
   front_line_price: string | null;
 };
 
+export type DashboardSummary = {
+  edition_label: string;
+  edition_year: number;
+  edition_month: number;
+  total_products: number;
+  total_rips: number;
+  total_closeouts: number;
+  total_combos: number;
+  products_price_down: number;
+  products_price_up: number;
+  products_price_flat: number;
+  avg_price_change_pct: number | null;
+  rip_total_potential_savings: number;
+  rip_avg_discount_pct: number | null;
+  top_rip_categories: { category: string; count: number; avg_save: number }[];
+  watchlist_count: number;
+  watchlist_buy_now: number;
+  category_product_counts: { category: string; count: number }[];
+  top_price_drops: { code: string; description: string | null; case_cost: string | null; prev_case_cost: string | null; pct_change: string | null }[];
+  top_price_increases: { code: string; description: string | null; case_cost: string | null; prev_case_cost: string | null; pct_change: string | null }[];
+};
+
 export type MoverRow = {
   code: string;
   description: string | null;
@@ -363,6 +385,7 @@ export const catalogApi = {
 };
 
 export const insightsApi = {
+  summary: () => api<DashboardSummary>("/api/v1/dashboard/summary"),
   rips: (params: {
     distributor?: string;
     category?: string[];
