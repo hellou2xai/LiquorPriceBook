@@ -739,7 +739,7 @@ class AlertEvent(Base):
         PgUUID(as_uuid=True), ForeignKey("book_editions.id", ondelete="SET NULL")
     )
     rule_type: Mapped[str] = mapped_column(String(64), nullable=False)
-    score: Mapped[Decimal | None] = mapped_column(Numeric(4, 3))
+    score: Mapped[Decimal | None] = mapped_column(Numeric(8, 3))
     payload: Mapped[dict] = mapped_column(
         JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb")
     )
