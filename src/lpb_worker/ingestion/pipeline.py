@@ -405,7 +405,7 @@ def _insert_rip_offers(
         pe_id = ed_lookup.get(r.get("code"))
         if pe_id is None or pe_id in seen_pe_ids:
             continue
-        tier_cases = _tier_to_cases(tier) or 1
+        tier_cases = min(_tier_to_cases(tier) or 1, 50)  # NJ law caps at 50
         payload.append(
             {
                 "product_edition_id": pe_id,
