@@ -171,11 +171,23 @@ class ProductDetailOut(BaseModel):
 def _current_edition(
     session: Session, distributor_slug: str | None = None
 ) -> BookEdition:
-    """Latest book_edition by (year, month). If distributor_slug is given,
-    constrain to that distributor."""
+    """Book edition for the current calendar month (or most recent before it).
+
+    Future editions (year/month > today) are stored for analytics but never
+    used as "current" pricing.  If distributor_slug is given, constrain to
+    that distributor.
+    """
+    today = date.today()
     stmt = (
         select(BookEdition)
         .join(Distributor, Distributor.id == BookEdition.distributor_id)
+        .where(
+            or_(
+                BookEdition.year < today.year,
+                and_(BookEdition.year == today.year,
+                     BookEdition.month <= today.month),
+            )
+        )
         .order_by(desc(BookEdition.year), desc(BookEdition.month),
                   desc(BookEdition.created_at))
         .limit(1)
@@ -202,6 +214,7 @@ def list_editions(
     user: dict = Depends(get_current_user),  # noqa: B008
     session: Session = Depends(get_session),  # noqa: B008
 ):
+    today = date.today()
     rows = session.execute(
         select(BookEdition, Distributor.slug)
         .join(Distributor, Distributor.id == BookEdition.distributor_id)
@@ -209,12 +222,15 @@ def list_editions(
     ).all()
     if not rows:
         return []
-    # Mark the highest (year, month) per distributor as current.
+    # Mark the highest non-future (year, month) per distributor as current.
     seen_distributors: set[str] = set()
     out: list[EditionOut] = []
     for ed, dslug in rows:
-        is_current = dslug not in seen_distributors
-        seen_distributors.add(dslug)
+        is_future = (ed.year > today.year
+                     or (ed.year == today.year and ed.month > today.month))
+        is_current = not is_future and dslug not in seen_distributors
+        if is_current:
+            seen_distributors.add(dslug)
         out.append(
             EditionOut(
                 id=ed.id,
@@ -232,11 +248,21 @@ def list_editions(
 def _current_edition_ids(
     session: Session, distributor_slug: str
 ) -> list[UUID]:
-    """Return current edition IDs. If 'all', returns one per distributor."""
+    """Return current edition IDs. If 'all', returns one per distributor.
+
+    Excludes future editions (year/month > today).
+    """
+    today = date.today()
+    future_filter = or_(
+        BookEdition.year < today.year,
+        and_(BookEdition.year == today.year,
+             BookEdition.month <= today.month),
+    )
     if distributor_slug == "all":
         rows = session.execute(
             select(BookEdition.id, Distributor.slug)
             .join(Distributor, Distributor.id == BookEdition.distributor_id)
+            .where(future_filter)
             .order_by(desc(BookEdition.year), desc(BookEdition.month))
         ).all()
         seen: dict[str, UUID] = {}

@@ -23,9 +23,11 @@ Cross-distributor views (distributor=all or specific):
 
 from __future__ import annotations
 
+from datetime import date
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import and_, asc, case, desc, func, select
+from sqlalchemy import and_, asc, case, desc, func, or_, select
 from sqlalchemy.orm import Session, aliased
 
 from lpb_core.db import get_session
@@ -182,12 +184,25 @@ def _money(v) -> str | None:
     return str(round(float(v), 2))
 
 
+def _not_future_filter():
+    """SQLAlchemy filter: edition (year, month) <= today."""
+    today = date.today()
+    return or_(
+        BookEdition.year < today.year,
+        and_(BookEdition.year == today.year,
+             BookEdition.month <= today.month),
+    )
+
+
 def _get_editions(session: Session, slug: str = "nj-allied"):
-    """Return (current, previous) BookEdition or raise."""
+    """Return (current, previous) BookEdition or raise.
+
+    Current = latest non-future edition; previous = the one before it.
+    """
     editions = session.execute(
         select(BookEdition)
         .join(Distributor, Distributor.id == BookEdition.distributor_id)
-        .where(Distributor.slug == slug)
+        .where(Distributor.slug == slug, _not_future_filter())
         .order_by(desc(BookEdition.year), desc(BookEdition.month),
                   desc(BookEdition.created_at))
         .limit(2)
@@ -204,6 +219,7 @@ def _get_all_editions(session: Session):
     rows = session.execute(
         select(BookEdition, Distributor)
         .join(Distributor, Distributor.id == BookEdition.distributor_id)
+        .where(_not_future_filter())
         .order_by(Distributor.slug, desc(BookEdition.year),
                   desc(BookEdition.month), desc(BookEdition.created_at))
     ).all()
