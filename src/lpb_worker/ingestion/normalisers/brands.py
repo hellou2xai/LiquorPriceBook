@@ -37,11 +37,18 @@ from lpb_core.db.models import Brand
 _PRODUCT_MODIFIER_RE = re.compile(r"[\d/]")
 # Words we treat as product modifiers even if they look like brand candidates.
 _MODIFIER_WORDS = {
+    # Spirits
     "GIN", "VODKA", "RUM", "WHISKEY", "WHISKY", "BOURBON", "TEQUILA",
     "MEZCAL", "BRANDY", "COGNAC", "RYE", "SCOTCH", "MALT", "BLEND",
     "BLANCO", "REPOSADO", "ANEJO", "SPICED", "GOLD", "SILVER", "PROOF",
     "BBN", "CASK", "BARREL", "STRAIGHT", "LIGHT", "DARK",
     "WHITE", "RED", "ROSE", "BRUT", "DRY", "SWEET", "EXTRA",
+    # Wine varietals (these are grape/style names, not brands)
+    "CABERNET", "SAUVIGNON", "PINOT", "NOIR", "GRIGIO", "GRIS",
+    "CHARDONNAY", "MERLOT", "ZINFANDEL", "SYRAH", "SHIRAZ", "MALBEC",
+    "RIESLING", "MOSCATO", "PROSECCO", "CHAMPAGNE", "SPARKLING",
+    "BLANC", "VIOGNIER", "TEMPRANILLO", "VERDEJO", "ALBARINO",
+    "VERMOUTH", "SINGLE", "IMPERIAL", "RESERVE",
 }
 DEFAULT_TOKEN_LIMIT = 2
 
@@ -77,10 +84,27 @@ def _take_n_tokens(text: str, limit: int) -> str:
             break
         if tok.upper() in _MODIFIER_WORDS and out:
             break
+        # Skip single-char tokens (garbled pdfplumber output like "C A B E")
+        if len(tok) == 1 and tok.isalpha():
+            continue
         out.append(tok)
         if len(out) >= limit:
             break
     return " ".join(out)
+
+
+def _is_valid_brand(name: str) -> bool:
+    """Reject brand names that are clearly noise."""
+    if not name or len(name) < 2:
+        return False
+    # Reject single short words like "BIN", "RED", "BOX"
+    if len(name) <= 3 and " " not in name:
+        return False
+    # Reject all-modifier results
+    tokens = name.split()
+    if all(t.upper().rstrip(".,;") in _MODIFIER_WORDS for t in tokens):
+        return False
+    return True
 
 
 def derive_brand_name(
@@ -93,12 +117,13 @@ def derive_brand_name(
     if brand_header and not _is_sales_rep_tag(brand_header):
         chunk = _strip_territory_paren(brand_header)
         candidate = _take_n_tokens(chunk, token_limit)
-        if candidate:
+        if _is_valid_brand(candidate):
             return candidate
     # Fallback: derive from description.
     if description:
-        candidate = _take_n_tokens(description.strip(), token_limit)
-        if candidate:
+        chunk = _strip_territory_paren(description.strip())
+        candidate = _take_n_tokens(chunk, token_limit)
+        if _is_valid_brand(candidate):
             return candidate
     return None
 

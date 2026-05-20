@@ -189,9 +189,98 @@ def parse_rip_annot(text):
     }
 
 
+_MODIFIER_WORDS = {
+    # Spirits
+    "GIN", "VODKA", "RUM", "WHISKEY", "WHISKY", "BOURBON", "TEQUILA",
+    "MEZCAL", "BRANDY", "COGNAC", "RYE", "SCOTCH", "MALT", "BLEND",
+    "BLANCO", "REPOSADO", "ANEJO", "SPICED", "GOLD", "SILVER", "PROOF",
+    "BBN", "CASK", "BARREL", "STRAIGHT", "LIGHT", "DARK",
+    "VS", "VSOP", "XO", "RARE", "OLD", "NEW",
+    # Wine varietals
+    "CHARDONNAY", "CABERNET", "SAUVIGNON", "PINOT", "GRIGIO", "NOIR",
+    "MERLOT", "ZINFANDEL", "SYRAH", "SHIRAZ", "MALBEC", "RIESLING",
+    "MOSCATO", "PROSECCO", "CHAMPAGNE", "SPARKLING", "RESERVE",
+    "WHITE", "RED", "ROSE", "BRUT", "DRY", "SWEET", "EXTRA",
+    "BLANC", "VIOGNIER", "TEMPRANILLO", "VERDEJO", "ALBARINO",
+    # Flavours
+    "PINEAPPLE", "COCONUT", "PEACH", "MANGO", "LIME", "LEMON",
+    "ORANGE", "RASPBERRY", "STRAWBERRY", "WATERMELON", "VANILLA",
+    "CHERRY", "GRAPE", "APPLE", "GRAPEFRUIT", "CRANBERRY",
+    "ESPRESSO", "MARTINI", "COFFEE", "HONEY", "CUCUMBER",
+    "BLUEBERRY", "BLACKBERRY", "PASSION", "FRUIT", "PUNCH",
+    "CITRON", "CITRUS", "TROPICAL", "BERRY", "TRIPLE",
+    # Wine style modifiers
+    "TRAY", "MEDAL", "MEDAL.", "GOLD", "SILVER",
+    # Pack/size modifiers
+    "COMBO", "COMBOS", "BOX", "GIFT", "PACK", "VAP", "LTO", "PET",
+}
+# Division-only pattern: one or more 1-2 char codes optionally with parens.
+_DIVISION_ONLY_RE = re.compile(
+    r"^[A-Z]{1,2}(\s+[A-Z]{1,2})*(\s*\([^)]*\))?\s*$"
+)
+
+
+def _is_brand_header(text):
+    """Return True if text is a brand header (not a sub-variant line).
+
+    Brand headers are real brand/distillery names like "THE GLENLIVET",
+    "HIGHLAND PARK", "MAKERS MARK", "WILD TURKEY BOURBON".
+
+    Sub-variant lines start with digits/years/proofs or are single
+    modifier words like "REPOSADO", "80 PROOF", "12 YR OLD".
+    Lines that are just division codes ("GS ( L FB JD IV )") are also
+    not brand headers.
+    """
+    # Strip any parenthesized division block to get the core text
+    core = _TERRITORY_PAREN_RE.sub(" ", text).strip()
+    if not core:
+        return False
+    # Division-only lines
+    if _DIVISION_ONLY_RE.match(text.strip()):
+        return False
+    # Skip URLs
+    if "WWW." in core or ".COM" in core or ".CO." in core:
+        return False
+    # Skip boilerplate / noise
+    if "CONTAINS:" in core or "INCLUDES:" in core or "EXCLUDES:" in core:
+        return False
+    if "Best Buy" in core or "RIP available" in core or "RIP schedule" in core:
+        return False
+    if "STANDARD PACKED" in core or "ABC Reg" in core:
+        return False
+    if re.match(r"^(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)", core):
+        return False
+    if "Bottle Reverse" in core or "Column Shows" in core:
+        return False
+    # Must have some real text (at least 2 uppercase letters)
+    if not re.search(r"[A-Z]{2,}", core):
+        return False
+    # Lines starting with a digit are sub-variant lines
+    # (e.g. "12 YR OLD", "80 PROOF", "101 PROOF", "2023")
+    if re.match(r"^\d", core):
+        return False
+    # Strip leading/trailing division codes from core text
+    tokens = core.split()
+    meaningful = [t for t in tokens
+                  if t.upper() not in _VALID_DIVISIONS and len(t) > 1]
+    if not meaningful:
+        return False  # only division codes remain
+    # All meaningful tokens are modifiers or year numbers? Not a brand.
+    # Catches "SAUVIGNON BLANC 2024", "CABERNET SAUVIGNON 2022", "PEACH"
+    if all(t.upper().rstrip(".,;") in _MODIFIER_WORDS
+           or re.match(r"^(19|20)\d{2}$", t)
+           for t in meaningful):
+        return False
+    # Single token that's 1-3 characters is likely a code fragment
+    if len(meaningful) == 1 and len(meaningful[0]) <= 3:
+        return False
+    return True
+
+
 def parse_main_catalog(pages, source):
     rows = []
     current_brand = [None, None, None]   # one per lane
+    current_sub = [None, None, None]     # sub-variant line per lane
     current_divisions = [None, None, None]  # division codes per lane
     # row index in `rows` of the most recent product per lane
     last_product_idx = [None, None, None]
@@ -224,6 +313,7 @@ def parse_main_catalog(pages, source):
                         "section": "MainCatalog",
                         "category": category,
                         "brand_header": current_brand[lane],
+                        "sub_brand": current_sub[lane],
                         "divisions": current_divisions[lane],
                         "code": vals.get("code"),
                         "size": vals.get("size"),
@@ -270,10 +360,14 @@ def parse_main_catalog(pages, source):
                             prod.update(rip)
                     continue
 
-                # Otherwise: brand header / sub-header
-                if re.search(r"[A-Z]{2,}", text):
+                # Otherwise: brand header or sub-variant line.
+                # Extract division codes from any parenthesized block.
+                divs = extract_divisions(text)
+                if divs:
+                    current_divisions[lane] = divs
+                if _is_brand_header(text):
                     current_brand[lane] = text
-                    divs = extract_divisions(text)
-                    if divs:
-                        current_divisions[lane] = divs
+                    current_sub[lane] = None
+                else:
+                    current_sub[lane] = text
     return rows

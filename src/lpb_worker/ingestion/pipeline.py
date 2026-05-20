@@ -153,7 +153,7 @@ def run_ingest(
     for raw in sections.pop("main_catalog", []):
         cat_id = cat_resolver.resolve(raw.get("category"))
         brand_id = brand_deriver.ensure(
-            description=raw.get("brand_header"),
+            description=raw.get("sub_brand") or raw.get("brand_header"),
             brand_header=raw.get("brand_header"),
         )
         main_rows.append({**raw, "category_id": cat_id, "brand_id": brand_id})
@@ -353,7 +353,7 @@ def _upsert_products_and_editions(
                 "brand_id": r.get("brand_id"),
                 "raw_category": r.get("category"),
                 "raw_brand_header": r.get("brand_header"),
-                "description": r.get("brand_header"),  # main catalog has no separate desc
+                "description": r.get("sub_brand") or r.get("brand_header"),
                 "divisions": r.get("divisions"),
                 "size": r.get("size"),
                 "pack": r.get("pack"),
