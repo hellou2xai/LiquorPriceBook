@@ -79,6 +79,8 @@ class ProductRow(BaseModel):
     top_rip_save: Decimal | None
     top_rip_tier: str | None
     case_cost_pct: Decimal | None
+    distributor_slug: str | None = None
+    distributor_name: str | None = None
 
 
 class ProductListOut(BaseModel):
@@ -227,13 +229,34 @@ def list_editions(
     return out
 
 
+def _current_edition_ids(
+    session: Session, distributor_slug: str
+) -> list[UUID]:
+    """Return current edition IDs. If 'all', returns one per distributor."""
+    if distributor_slug == "all":
+        rows = session.execute(
+            select(BookEdition.id, Distributor.slug)
+            .join(Distributor, Distributor.id == BookEdition.distributor_id)
+            .order_by(desc(BookEdition.year), desc(BookEdition.month))
+        ).all()
+        seen: dict[str, UUID] = {}
+        for eid, dslug in rows:
+            if dslug not in seen:
+                seen[dslug] = eid
+        if not seen:
+            raise HTTPException(status_code=404, detail="No editions ingested yet")
+        return list(seen.values())
+    ed = _current_edition(session, distributor_slug)
+    return [ed.id]
+
+
 @router.get("/categories", response_model=list[CategoryOut])
 def list_categories(
     distributor: str = Query("nj-allied"),
     user: dict = Depends(get_current_user),  # noqa: B008
     session: Session = Depends(get_session),  # noqa: B008
 ):
-    edition = _current_edition(session, distributor)
+    edition_ids = _current_edition_ids(session, distributor)
     rows = session.execute(
         select(
             Category.id,
@@ -246,7 +269,7 @@ def list_categories(
             ProductEdition,
             and_(
                 ProductEdition.category_id == Category.id,
-                ProductEdition.book_edition_id == edition.id,
+                ProductEdition.book_edition_id.in_(edition_ids),
             ),
         )
         .group_by(Category.id, Category.slug, Category.display_name, Category.sort_order)
@@ -269,7 +292,7 @@ def list_brands(
     user: dict = Depends(get_current_user),  # noqa: B008
     session: Session = Depends(get_session),  # noqa: B008
 ):
-    edition = _current_edition(session, distributor)
+    edition_ids = _current_edition_ids(session, distributor)
     stmt = (
         select(
             Brand.id,
@@ -278,7 +301,7 @@ def list_brands(
             func.count(ProductEdition.id).label("n"),
         )
         .join(ProductEdition, ProductEdition.brand_id == Brand.id)
-        .where(ProductEdition.book_edition_id == edition.id)
+        .where(ProductEdition.book_edition_id.in_(edition_ids))
         .group_by(Brand.id, Brand.slug, Brand.display_name)
         .order_by(desc("n"))
         .limit(limit)
@@ -309,12 +332,44 @@ def list_products(
         "name",
         pattern="^(name|case_cost_asc|case_cost_desc|moved_pct_abs)$",
     ),
-    limit: int = Query(50, ge=1, le=200),
+    limit: int = Query(50, ge=1, le=1000),
     offset: int = Query(0, ge=0),
     user: dict = Depends(get_current_user),  # noqa: B008
     session: Session = Depends(get_session),  # noqa: B008
 ):
-    edition = _current_edition(session, distributor)
+    # Support distributor=all to show products from all distributors
+    is_all = distributor == "all"
+    if is_all:
+        # Get current edition per distributor
+        all_editions = session.execute(
+            select(BookEdition.id, Distributor.slug, Distributor.name)
+            .join(Distributor, Distributor.id == BookEdition.distributor_id)
+            .order_by(desc(BookEdition.year), desc(BookEdition.month))
+        ).all()
+        # Pick latest edition per distributor
+        seen: dict[str, tuple] = {}
+        for eid, dslug, dname in all_editions:
+            if dslug not in seen:
+                seen[dslug] = (eid, dslug, dname)
+        if not seen:
+            raise HTTPException(status_code=404, detail="No editions ingested yet")
+        edition_ids = [v[0] for v in seen.values()]
+        dist_name_by_eid = {v[0]: v[2] for v in seen.values()}
+        dist_slug_by_eid = {v[0]: v[1] for v in seen.values()}
+        # Use first edition for the response metadata
+        first_ed = session.execute(
+            select(BookEdition).where(BookEdition.id == edition_ids[0])
+        ).scalar_one()
+        edition = first_ed
+    else:
+        edition = _current_edition(session, distributor)
+        edition_ids = [edition.id]
+        dist_row = session.execute(
+            select(Distributor.slug, Distributor.name)
+            .where(Distributor.id == edition.distributor_id)
+        ).first()
+        dist_name_by_eid = {edition.id: dist_row.name if dist_row else distributor}
+        dist_slug_by_eid = {edition.id: dist_row.slug if dist_row else distributor}
 
     # Subquery: top RIP per product_edition (highest save_amount).
     top_rip_save = (
@@ -344,6 +399,7 @@ def list_products(
             top_rip.tier.label("top_rip_tier"),
             top_rip.save_amount.label("top_rip_save"),
             ProductEdition.id.label("product_edition_id"),
+            ProductEdition.book_edition_id.label("book_edition_id"),
         )
         .select_from(ProductEdition)
         .join(Product, Product.id == ProductEdition.product_id)
@@ -360,7 +416,7 @@ def list_products(
                 top_rip.save_amount == top_rip_save.c.max_save,
             ),
         )
-        .where(ProductEdition.book_edition_id == edition.id)
+        .where(ProductEdition.book_edition_id.in_(edition_ids))
     )
 
     if category:
@@ -448,13 +504,13 @@ def list_products(
             top_rip_save=r.top_rip_save,
             top_rip_tier=r.top_rip_tier,
             case_cost_pct=pct_by_pe.get(r.product_edition_id),
+            distributor_slug=dist_slug_by_eid.get(r.book_edition_id),
+            distributor_name=dist_name_by_eid.get(r.book_edition_id),
         )
         for r in rows
     ]
 
-    dist_slug = session.execute(
-        select(Distributor.slug).where(Distributor.id == edition.distributor_id)
-    ).scalar_one()
+    dist_slug = dist_slug_by_eid.get(edition.id, distributor)
     return ProductListOut(
         items=items,
         total=total,
@@ -478,7 +534,7 @@ def get_facets(
     user: dict = Depends(get_current_user),  # noqa: B008
     session: Session = Depends(get_session),  # noqa: B008
 ):
-    edition = _current_edition(session, distributor)
+    edition_ids = _current_edition_ids(session, distributor)
 
     # Divisions: split space-separated codes and count occurrences.
     div_rows = session.execute(
@@ -486,11 +542,11 @@ def get_facets(
             "SELECT code, count(*) AS cnt FROM ("
             "  SELECT unnest(string_to_array(divisions, ' ')) AS code"
             "  FROM product_editions"
-            "  WHERE book_edition_id = :eid"
+            "  WHERE book_edition_id = ANY(:eids)"
             "    AND divisions IS NOT NULL AND divisions != ''"
             ") sub GROUP BY code ORDER BY cnt DESC"
         ),
-        {"eid": edition.id},
+        {"eids": edition_ids},
     ).all()
     divisions = [DivisionFacet(code=r.code, product_count=r.cnt) for r in div_rows]
 
@@ -501,7 +557,7 @@ def get_facets(
             func.count(ProductEdition.id).label("cnt"),
         )
         .where(
-            ProductEdition.book_edition_id == edition.id,
+            ProductEdition.book_edition_id.in_(edition_ids),
             ProductEdition.size.isnot(None),
             ProductEdition.size != "",
         )
@@ -518,7 +574,7 @@ def get_facets(
             func.count(ProductEdition.id).label("cnt"),
         )
         .join(ProductEdition, ProductEdition.brand_id == Brand.id)
-        .where(ProductEdition.book_edition_id == edition.id)
+        .where(ProductEdition.book_edition_id.in_(edition_ids))
         .group_by(Brand.slug, Brand.display_name)
         .order_by(desc("cnt"))
         .limit(200)
@@ -534,7 +590,7 @@ def get_facets(
             func.min(ProductEdition.case_cost),
             func.max(ProductEdition.case_cost),
         ).where(
-            ProductEdition.book_edition_id == edition.id,
+            ProductEdition.book_edition_id.in_(edition_ids),
             ProductEdition.case_cost.isnot(None),
         )
     ).first()
@@ -544,13 +600,13 @@ def get_facets(
     # Total products & total with RIP.
     total_products = session.execute(
         select(func.count(ProductEdition.id))
-        .where(ProductEdition.book_edition_id == edition.id)
+        .where(ProductEdition.book_edition_id.in_(edition_ids))
     ).scalar_one()
 
     total_with_rip = session.execute(
         select(func.count(func.distinct(RipOffer.product_edition_id)))
         .join(ProductEdition, ProductEdition.id == RipOffer.product_edition_id)
-        .where(ProductEdition.book_edition_id == edition.id)
+        .where(ProductEdition.book_edition_id.in_(edition_ids))
     ).scalar_one()
 
     return FacetsOut(

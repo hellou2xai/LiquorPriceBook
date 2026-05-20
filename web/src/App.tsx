@@ -76,12 +76,20 @@ function Shell({ children }: { children: React.ReactNode }) {
   const { isAuthed } = useAuth();
   const { distributorLabel } = useDistributor();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() =>
+    localStorage.getItem("lpb_sidebar_collapsed") === "true"
+  );
   const location = useLocation();
 
   // Close sidebar on route change (mobile)
   useEffect(() => {
     setSidebarOpen(false);
   }, [location.pathname]);
+
+  // Persist sidebar collapsed state
+  useEffect(() => {
+    localStorage.setItem("lpb_sidebar_collapsed", String(sidebarCollapsed));
+  }, [sidebarCollapsed]);
 
   const sidebarLinkClass = ({ isActive }: { isActive: boolean }) =>
     `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
@@ -112,20 +120,22 @@ function Shell({ children }: { children: React.ReactNode }) {
 
       {/* Sidebar — always visible on lg+, slide-in on mobile */}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 w-60 bg-brand-gradient shadow-2xl flex flex-col transition-transform duration-200 ease-in-out lg:translate-x-0 ${
+        className={`fixed inset-y-0 left-0 z-50 ${sidebarCollapsed ? "w-16" : "w-60"} bg-brand-gradient shadow-2xl flex flex-col transition-all duration-200 ease-in-out lg:translate-x-0 ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
         {/* Logo + close */}
-        <div className="flex items-center justify-between h-16 px-5 border-b border-white/10 flex-shrink-0">
+        <div className="flex items-center justify-between h-16 px-3 border-b border-white/10 flex-shrink-0">
           <NavLink to="/" className="flex items-center gap-2">
-            <div className="h-8 w-8 rounded-lg bg-brand-gradient-warm flex items-center justify-center">
+            <div className="h-8 w-8 rounded-lg bg-brand-gradient-warm flex items-center justify-center flex-shrink-0">
               <span className="text-white font-bold text-sm">C</span>
             </div>
-            <div>
-              <div className="font-semibold text-white text-sm tracking-tight">CELR</div>
-              <div className="text-[10px] text-zinc-400 -mt-0.5">Price Book</div>
-            </div>
+            {!sidebarCollapsed && (
+              <div>
+                <div className="font-semibold text-white text-sm tracking-tight">CELR</div>
+                <div className="text-[10px] text-zinc-400 -mt-0.5">Price Book</div>
+              </div>
+            )}
           </NavLink>
           <button
             onClick={() => setSidebarOpen(false)}
@@ -139,40 +149,53 @@ function Shell({ children }: { children: React.ReactNode }) {
         </div>
 
         {/* Nav items */}
-        <nav className="flex-1 overflow-y-auto sidebar-scroll px-3 py-4 space-y-1">
+        <nav className="flex-1 overflow-y-auto sidebar-scroll px-2 py-4 space-y-1">
           {NAV.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
               end={item.to === "/"}
               className={sidebarLinkClass}
+              title={sidebarCollapsed ? item.label : undefined}
             >
               <NavIcon d={item.icon} />
-              {item.label}
+              {!sidebarCollapsed && item.label}
             </NavLink>
           ))}
         </nav>
 
         {/* Distributor selector */}
-        <DistributorSelector />
+        {!sidebarCollapsed && <DistributorSelector />}
+
+        {/* Collapse toggle */}
+        <button
+          onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+          className="hidden lg:flex items-center justify-center border-t border-white/10 py-2.5 text-zinc-400 hover:text-white hover:bg-white/10 transition-colors"
+          title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+        >
+          <svg className={`h-4 w-4 transition-transform ${sidebarCollapsed ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
+          </svg>
+        </button>
 
         {/* Bottom nav (Settings) */}
-        <div className="border-t border-white/10 px-3 py-3 space-y-1 flex-shrink-0">
+        <div className="border-t border-white/10 px-2 py-3 space-y-1 flex-shrink-0">
           {BOTTOM_NAV.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
               className={sidebarLinkClass}
+              title={sidebarCollapsed ? item.label : undefined}
             >
               <NavIcon d={item.icon} />
-              {item.label}
+              {!sidebarCollapsed && item.label}
             </NavLink>
           ))}
         </div>
       </aside>
 
       {/* Main content area — offset on lg for persistent sidebar */}
-      <div className="flex flex-col min-h-screen lg:pl-60">
+      <div className={`flex flex-col min-h-screen transition-all duration-200 ${sidebarCollapsed ? "lg:pl-16" : "lg:pl-60"}`}>
         {/* Top bar with hamburger (hamburger hidden on lg) */}
         <header className="sticky top-0 z-30 bg-white border-b border-zinc-200 shadow-sm">
           <div className="flex items-center h-14 px-4 max-w-7xl mx-auto">

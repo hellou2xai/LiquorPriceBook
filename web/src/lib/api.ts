@@ -143,6 +143,8 @@ export type ProductRow = {
   top_rip_save: string | null;
   top_rip_tier: string | null;
   case_cost_pct: string | null;
+  distributor_slug: string | null;
+  distributor_name: string | null;
 };
 
 export type ProductList = {

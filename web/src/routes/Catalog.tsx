@@ -5,10 +5,10 @@ import { useQuery } from "@tanstack/react-query";
 import { catalogApi, watchlistApi } from "../lib/api";
 import type { Facets } from "../lib/api";
 import { money, pct, pctClass } from "../lib/fmt";
-import { useDistributor } from "../lib/distributor";
 import FavoriteButton from "../components/FavoriteButton";
 
-const PAGE_SIZE = 50;
+const PAGE_SIZES = [25, 50, 100, 250, 500, 1000] as const;
+const DEFAULT_PAGE_SIZE = 50;
 
 type SortKey = "name" | "case_cost_asc" | "case_cost_desc" | "moved_pct_abs";
 
@@ -193,7 +193,7 @@ function FilterSidebar({
   filters: Filters;
   onChange: (f: Filters) => void;
   facets: Facets | undefined;
-  distributor: string | null | undefined;
+  distributor: string;
 }) {
   const [priceMin, setPriceMin] = useState(filters.minPrice);
   const [priceMax, setPriceMax] = useState(filters.maxPrice);
@@ -325,11 +325,11 @@ function CategoriesFilter({
 }: {
   filters: Filters;
   onChange: (f: Filters) => void;
-  distributor: string | null | undefined;
+  distributor: string;
 }) {
   const categoriesQ = useQuery({
     queryKey: ["categories", distributor],
-    queryFn: () => catalogApi.categories(distributor ?? undefined),
+    queryFn: () => catalogApi.categories(distributor),
     staleTime: 5 * 60_000,
   });
 
@@ -369,7 +369,7 @@ function BrandsFilter({
   filters: Filters;
   onChange: (f: Filters) => void;
   facets: Facets | undefined;
-  distributor: string | null | undefined;
+  distributor: string;
 }) {
   const [brandSearch, setBrandSearch] = useState("");
   const [debouncedBrandSearch, setDebouncedBrandSearch] = useState("");
@@ -384,7 +384,7 @@ function BrandsFilter({
     queryKey: ["brands-search", distributor, debouncedBrandSearch],
     queryFn: () =>
       catalogApi.brands({
-        distributor: distributor ?? undefined,
+        distributor: distributor,
         q: debouncedBrandSearch || undefined,
         limit: 50,
       }),
@@ -449,11 +449,14 @@ function BrandsFilter({
 // ══════════════════ Main Component ══════════════════
 
 export default function Catalog() {
-  const { distributor } = useDistributor();
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [page, setPage] = useState(0);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+  const [filterPanelOpen, setFilterPanelOpen] = useState(true);
+
+  // Catalog shows all distributors by default
+  const catalogDistributor = "all";
 
   // Debounce search
   useMemo(() => {
@@ -476,15 +479,15 @@ export default function Catalog() {
   }, [wlQ.data]);
 
   const facetsQ = useQuery({
-    queryKey: ["catalog-facets", distributor],
-    queryFn: () => catalogApi.facets(distributor),
+    queryKey: ["catalog-facets", catalogDistributor],
+    queryFn: () => catalogApi.facets(catalogDistributor),
     staleTime: 5 * 60_000,
   });
 
   const productsQ = useQuery({
     queryKey: [
       "products",
-      distributor,
+      catalogDistributor,
       {
         search: debouncedSearch,
         categories: [...filters.categories],
@@ -496,11 +499,12 @@ export default function Catalog() {
         maxPrice: filters.maxPrice,
         sort: filters.sort,
         page,
+        pageSize,
       },
     ],
     queryFn: () =>
       catalogApi.products({
-        distributor,
+        distributor: catalogDistributor,
         search: debouncedSearch || undefined,
         category: filters.categories.size > 0 ? [...filters.categories] : undefined,
         brand: filters.brands.size > 0 ? [...filters.brands] : undefined,
@@ -510,14 +514,14 @@ export default function Catalog() {
         min_case_cost: filters.minPrice ? parseFloat(filters.minPrice) : undefined,
         max_case_cost: filters.maxPrice ? parseFloat(filters.maxPrice) : undefined,
         sort: filters.sort,
-        limit: PAGE_SIZE,
-        offset: page * PAGE_SIZE,
+        limit: pageSize,
+        offset: page * pageSize,
       }),
     placeholderData: (prev) => prev,
   });
 
   const total = productsQ.data?.total ?? 0;
-  const lastPage = Math.max(0, Math.ceil(total / PAGE_SIZE) - 1);
+  const lastPage = Math.max(0, Math.ceil(total / pageSize) - 1);
 
   function updateFilters(f: Filters) {
     setFilters(f);
@@ -578,32 +582,37 @@ export default function Catalog() {
       {/* Active filter chips */}
       <ActiveFilterChips filters={filters} onChange={updateFilters} />
 
-      {/* Mobile filters toggle */}
-      <button
-        className="md:hidden flex items-center gap-2 rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
-        onClick={() => setSidebarOpen(!sidebarOpen)}
-      >
-        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2a1 1 0 01-.293.707L13 13.414V19a1 1 0 01-.553.894l-4 2A1 1 0 017 21v-7.586L3.293 6.707A1 1 0 013 6V4z" />
-        </svg>
-        Filters
-        {(filters.categories.size + filters.brands.size + filters.divisions.size + filters.sizes.size + (filters.hasRip !== null ? 1 : 0) + (filters.minPrice ? 1 : 0) + (filters.maxPrice ? 1 : 0)) > 0 && (
-          <span className="inline-flex items-center justify-center rounded-full bg-zinc-800 text-white text-[10px] font-bold w-4 h-4">
-            {filters.categories.size + filters.brands.size + filters.divisions.size + filters.sizes.size + (filters.hasRip !== null ? 1 : 0) + (filters.minPrice ? 1 : 0) + (filters.maxPrice ? 1 : 0)}
-          </span>
-        )}
-      </button>
+      {/* Filter panel toggle + Mobile filters toggle */}
+      <div className="flex items-center gap-2">
+        <button
+          className="flex items-center gap-2 rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+          onClick={() => setFilterPanelOpen(!filterPanelOpen)}
+        >
+          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2a1 1 0 01-.293.707L13 13.414V19a1 1 0 01-.553.894l-4 2A1 1 0 017 21v-7.586L3.293 6.707A1 1 0 013 6V4z" />
+          </svg>
+          <span className="hidden sm:inline">{filterPanelOpen ? "Hide Filters" : "Show Filters"}</span>
+          <span className="sm:hidden">Filters</span>
+          {(filters.categories.size + filters.brands.size + filters.divisions.size + filters.sizes.size + (filters.hasRip !== null ? 1 : 0) + (filters.minPrice ? 1 : 0) + (filters.maxPrice ? 1 : 0)) > 0 && (
+            <span className="inline-flex items-center justify-center rounded-full bg-zinc-800 text-white text-[10px] font-bold w-4 h-4">
+              {filters.categories.size + filters.brands.size + filters.divisions.size + filters.sizes.size + (filters.hasRip !== null ? 1 : 0) + (filters.minPrice ? 1 : 0) + (filters.maxPrice ? 1 : 0)}
+            </span>
+          )}
+        </button>
+      </div>
 
       {/* Sidebar + Content */}
       <div className="flex flex-col md:flex-row gap-0">
-        <div className={`${sidebarOpen ? "block w-full" : "hidden"} md:block md:w-[220px] md:flex-shrink-0`}>
-          <FilterSidebar
-            filters={filters}
-            onChange={updateFilters}
-            facets={facetsQ.data}
-            distributor={distributor}
-          />
-        </div>
+        {filterPanelOpen && (
+          <div className="w-full md:w-[220px] md:flex-shrink-0">
+            <FilterSidebar
+              filters={filters}
+              onChange={updateFilters}
+              facets={facetsQ.data}
+              distributor={catalogDistributor}
+            />
+          </div>
+        )}
 
         {/* Product table */}
         <div className="flex-1 min-w-0">
@@ -620,6 +629,7 @@ export default function Catalog() {
                     >
                       Description {filters.sort === "name" && <span className="text-[10px]">▲</span>}
                     </th>
+                    <th className="px-3 py-2 hidden lg:table-cell">Distributor</th>
                     <th className="px-3 py-2 hidden md:table-cell">Brand</th>
                     <th className="px-3 py-2 hidden sm:table-cell">Size</th>
                     <th
@@ -636,19 +646,19 @@ export default function Catalog() {
                 <tbody className="divide-y divide-zinc-100">
                   {productsQ.isLoading ? (
                     <tr>
-                      <td colSpan={9} className="px-4 py-6 text-center text-zinc-500">
+                      <td colSpan={10} className="px-4 py-6 text-center text-zinc-500">
                         Loading...
                       </td>
                     </tr>
                   ) : productsQ.data?.items.length === 0 ? (
                     <tr>
-                      <td colSpan={9} className="px-4 py-6 text-center text-zinc-500">
+                      <td colSpan={10} className="px-4 py-6 text-center text-zinc-500">
                         No products match your filters.
                       </td>
                     </tr>
                   ) : (
                     productsQ.data?.items.map((p) => (
-                      <tr key={p.code} className="hover:bg-brand-tan">
+                      <tr key={`${p.distributor_slug}-${p.code}`} className="hover:bg-brand-tan">
                         <td className="px-3 py-2">
                           <FavoriteButton
                             code={p.code}
@@ -659,14 +669,14 @@ export default function Catalog() {
                         </td>
                         <td className="px-3 py-2 font-mono text-xs">
                           <Link
-                            to={`/catalog/${p.code}`}
+                            to={`/catalog/${p.code}${p.distributor_slug ? `?d=${p.distributor_slug}` : ""}`}
                             className="text-brand-navy hover:text-brand-orange hover:underline"
                           >
                             {p.code}
                           </Link>
                         </td>
                         <td className="px-3 py-2">
-                          <Link to={`/catalog/${p.code}`} className="hover:underline">
+                          <Link to={`/catalog/${p.code}${p.distributor_slug ? `?d=${p.distributor_slug}` : ""}`} className="hover:underline">
                             {p.description ?? "\u2014"}
                           </Link>
                           {p.divisions && (
@@ -674,6 +684,15 @@ export default function Catalog() {
                               {p.divisions}
                             </span>
                           )}
+                        </td>
+                        <td className="px-3 py-2 hidden lg:table-cell">
+                          <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                            p.distributor_slug === "nj-allied"
+                              ? "bg-blue-50 text-blue-700 border border-blue-200"
+                              : "bg-purple-50 text-purple-700 border border-purple-200"
+                          }`}>
+                            {p.distributor_name ?? p.distributor_slug ?? "\u2014"}
+                          </span>
                         </td>
                         <td className="px-3 py-2 text-zinc-600 text-xs hidden md:table-cell">{p.brand_slug ?? "\u2014"}</td>
                         <td className="px-3 py-2 text-zinc-600 hidden sm:table-cell">{p.size ?? "\u2014"}</td>
@@ -704,10 +723,27 @@ export default function Catalog() {
             </div>
 
             {/* Pagination */}
-            <div className="flex items-center justify-between px-4 py-3 border-t border-zinc-200 bg-brand-tan text-sm">
-              <div className="text-zinc-600">
-                Page {page + 1} of {lastPage + 1} &middot;{" "}
-                {total.toLocaleString()} total
+            <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 border-t border-zinc-200 bg-brand-tan text-sm">
+              <div className="flex items-center gap-3 text-zinc-600">
+                <span>
+                  Page {page + 1} of {lastPage + 1} &middot;{" "}
+                  {total.toLocaleString()} total
+                </span>
+                <div className="flex items-center gap-1.5">
+                  <label className="text-xs text-zinc-500">Show</label>
+                  <select
+                    value={pageSize}
+                    onChange={(e) => {
+                      setPageSize(Number(e.target.value));
+                      setPage(0);
+                    }}
+                    className="rounded border border-zinc-300 bg-white px-1.5 py-1 text-xs focus:border-brand-orange focus:outline-none"
+                  >
+                    {PAGE_SIZES.map((s) => (
+                      <option key={s} value={s}>{s}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
               <div className="flex gap-2">
                 <button
