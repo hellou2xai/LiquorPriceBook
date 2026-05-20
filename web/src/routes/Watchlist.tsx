@@ -248,7 +248,7 @@ function AddToOrderButton({
 }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [flash, setFlash] = useState<string | null>(null);
+  const [flash, setFlash] = useState<{ text: string; orderId?: string } | null>(null);
   const [showNew, setShowNew] = useState(false);
   const [newName, setNewName] = useState("");
   const ref = useRef<HTMLDivElement>(null);
@@ -272,13 +272,13 @@ function AddToOrderButton({
         qty_bottles: qty.bottles > 0 ? qty.bottles : 0,
       });
       onAdded();
-      setFlash("Added!");
-      setTimeout(() => setFlash(null), 1500);
+      setFlash({ text: "Added!", orderId });
+      setTimeout(() => setFlash(null), 4000);
       setOpen(false);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Unknown error";
-      setFlash(`Failed: ${msg}`);
-      setTimeout(() => setFlash(null), 3000);
+      setFlash({ text: `Failed: ${msg}` });
+      setTimeout(() => setFlash(null), 4000);
     } finally {
       setBusy(false);
     }
@@ -295,15 +295,15 @@ function AddToOrderButton({
         qty_bottles: qty.bottles > 0 ? qty.bottles : 0,
       });
       onAdded();
-      setFlash("Created & Added!");
-      setTimeout(() => setFlash(null), 1500);
+      setFlash({ text: "Created!", orderId: order.id });
+      setTimeout(() => setFlash(null), 4000);
       setOpen(false);
       setShowNew(false);
       setNewName("");
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Unknown error";
-      setFlash(`Failed: ${msg}`);
-      setTimeout(() => setFlash(null), 3000);
+      setFlash({ text: `Failed: ${msg}` });
+      setTimeout(() => setFlash(null), 4000);
     } finally {
       setBusy(false);
     }
@@ -312,7 +312,14 @@ function AddToOrderButton({
   return (
     <div className="relative" ref={ref}>
       {flash ? (
-        <span className="text-[10px] text-emerald-600 font-medium animate-pulse whitespace-nowrap">{flash}</span>
+        <span className="text-[10px] font-medium whitespace-nowrap">
+          <span className={flash.orderId ? "text-emerald-600" : "text-red-600"}>{flash.text}</span>
+          {flash.orderId && (
+            <Link to={`/orders/${flash.orderId}`} className="ml-1 text-zinc-500 underline hover:text-zinc-800">
+              View
+            </Link>
+          )}
+        </span>
       ) : (
         <button
           onClick={() => setOpen(!open)}
@@ -484,13 +491,25 @@ export default function Watchlist() {
       // 1. Create real order via API
       const order = await ordersApi.create({ name: name.trim() });
       // 2. Copy ALL tracked items into the order
-      await ordersApi.copyFromWatchlist(order.id);
+      const copyResult = await ordersApi.copyFromWatchlist(order.id);
+      if (copyResult.added === 0) {
+        // Tracked items might already be in the order — try adding individually
+        for (const item of items) {
+          try {
+            const cq = cart.get(item.product_code);
+            await ordersApi.addItem(order.id, {
+              code: item.product_code,
+              qty_cases: cq?.cases ?? 0,
+              qty_bottles: cq?.bottles ?? 0,
+            });
+          } catch { /* item may already exist, that's fine */ }
+        }
+      }
       // 3. Update quantities for items that have qty set in cart
       const cartRecord = cartToRecord(cart);
-      const failedUpdates: string[] = [];
       const updatePromises = Object.entries(cartRecord).map(([code, qty]) =>
         ordersApi.updateItem(order.id, code, { qty_cases: qty.cases, qty_bottles: qty.bottles })
-          .catch(() => { failedUpdates.push(code); })
+          .catch(() => { /* item may not be in this order */ })
       );
       await Promise.all(updatePromises);
       // 4. Invalidate orders cache so Order page shows the new order

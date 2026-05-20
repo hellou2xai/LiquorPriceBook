@@ -246,9 +246,65 @@ def list_orders(
         for r in stats_rows:
             item_stats[r.watchlist_id] = (r.cnt, r.total_cases, r.total_bottles)
 
+    # Compute invoice totals per order (case_cost * qty_cases + btl_cost * qty_bottles)
+    edition = _current_edition(session, "nj-allied")
+    invoice_by_order: dict[UUID, Decimal] = defaultdict(lambda: Decimal("0"))
+    rebate_by_order: dict[UUID, Decimal] = defaultdict(lambda: Decimal("0"))
+    if order_ids:
+        cost_rows = session.execute(
+            select(
+                WatchlistItem.watchlist_id,
+                WatchlistItem.qty_cases,
+                WatchlistItem.qty_bottles,
+                ProductEdition.case_cost,
+                ProductEdition.btl_cost,
+                ProductEdition.id.label("pe_id"),
+            )
+            .select_from(WatchlistItem)
+            .join(Product, Product.id == WatchlistItem.product_id)
+            .outerjoin(ProductEdition, and_(
+                ProductEdition.product_id == Product.id,
+                ProductEdition.book_edition_id == edition.id,
+            ))
+            .where(WatchlistItem.watchlist_id.in_(order_ids))
+        ).all()
+        # Collect PE IDs for RIP lookup
+        pe_ids = [r.pe_id for r in cost_rows if r.pe_id]
+        rips_by_pe: dict[UUID, list] = defaultdict(list)
+        if pe_ids:
+            rip_rows = session.execute(
+                select(RipOffer)
+                .where(RipOffer.product_edition_id.in_(pe_ids))
+                .order_by(asc(RipOffer.tier_cases))
+            ).scalars().all()
+            for rip in rip_rows:
+                rips_by_pe[rip.product_edition_id].append(rip)
+        for r in cost_rows:
+            cc = r.case_cost or Decimal("0")
+            bc = r.btl_cost or Decimal("0")
+            inv = cc * r.qty_cases + bc * r.qty_bottles
+            invoice_by_order[r.watchlist_id] += inv
+            # RIP rebate on qualifying cases
+            if r.pe_id and r.qty_cases > 0:
+                rips = rips_by_pe.get(r.pe_id, [])
+                qualifying = [
+                    rip for rip in rips
+                    if r.qty_cases >= rip.tier_cases
+                ]
+                if qualifying:
+                    best = max(qualifying, key=lambda x: x.save_amount)
+                    reb = min(
+                        best.save_amount * r.qty_cases,
+                        Decimal("1000"),
+                    )
+                    rebate_by_order[r.watchlist_id] += reb
+
     results = []
     for o in orders:
         cnt, cases, bottles = item_stats.get(o.id, (0, 0, 0))
+        inv = invoice_by_order.get(o.id, Decimal("0"))
+        reb = rebate_by_order.get(o.id, Decimal("0"))
+        eff = inv - reb
         results.append(OrderSummaryOut(
             id=str(o.id),
             name=o.name,
@@ -258,6 +314,9 @@ def list_orders(
             item_count=cnt,
             total_cases=cases,
             total_bottles=bottles,
+            invoice_total=_money(inv),
+            rip_rebate_total=_money(reb),
+            effective_total=_money(eff),
             created_at=o.created_at.isoformat(),
             updated_at=o.updated_at.isoformat(),
             submitted_at=o.submitted_at.isoformat() if o.submitted_at else None,
