@@ -15,6 +15,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from lpb_api.routes import ai as ai_routes
+from lpb_api.routes import analytics as analytics_routes
 from lpb_api.routes import auth as auth_routes
 from lpb_api.routes import catalog as catalog_routes
 from lpb_api.routes import ingest as ingest_routes
@@ -156,6 +157,7 @@ app.include_router(insights_routes.router)
 app.include_router(specials_routes.router)
 app.include_router(orders_routes.router)
 app.include_router(ai_routes.router)
+app.include_router(analytics_routes.router)
 
 # Later routers (admin tools for AI-C alert configs) will land here:
 # from lpb_api.routes import catalog, watchlists, alerts, ingest

@@ -626,3 +626,60 @@ export const ordersApi = {
   exportUrl: (id: string, format = "xlsx", division?: string) =>
     `${API_BASE}/api/v1/orders/${id}/export${_qs({ format, division })}`,
 };
+
+// ---------- Pricing Analytics ----------
+
+export type AnalyticsRow = {
+  code: string;
+  description: string | null;
+  size: string | null;
+  brand: string | null;
+  category: string | null;
+  divisions: string | null;
+  case_cost: string | null;
+  prev_case_cost: string | null;
+  pct_change: number | null;
+  rip_save: string | null;
+  effective_cost: string | null;
+  rip_tier: string | null;
+  is_closeout: boolean;
+  closeout_pct_off: number | null;
+  tag: string | null;
+};
+
+export type CategoryTrendRow = {
+  category: string;
+  product_count: number;
+  avg_case_cost: string;
+  prev_avg_case_cost: string;
+  avg_change: string;
+  avg_pct_change: number;
+  drops: number;
+  increases: number;
+};
+
+export type AnalyticsResponse = {
+  view: string;
+  edition_current: string;
+  edition_previous: string | null;
+  total: number;
+  rows: AnalyticsRow[];
+  category_rows: CategoryTrendRow[];
+};
+
+export type AnalyticsView =
+  | "price_drops"
+  | "price_increases"
+  | "new_rips"
+  | "lost_rips"
+  | "best_value"
+  | "closeout_rip"
+  | "category_trends"
+  | "new_products"
+  | "discontinued"
+  | "watchlist_movers";
+
+export const analyticsApi = {
+  query: (view: AnalyticsView, limit = 100) =>
+    api<AnalyticsResponse>(`/api/v1/analytics${_qs({ view, limit })}`),
+};

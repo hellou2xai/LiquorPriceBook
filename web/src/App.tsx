@@ -16,6 +16,7 @@ import AdminIngest from "./routes/AdminIngest";
 import Specials from "./routes/Specials";
 import Orders from "./routes/Orders";
 import OrderDetailPage from "./routes/OrderDetail";
+import Analytics from "./routes/Analytics";
 import Settings from "./routes/Settings";
 import Login from "./routes/Login";
 
@@ -28,6 +29,7 @@ const NAV = [
   { to: "/specials", label: "Specials" },
   { to: "/orders", label: "Orders" },
   { to: "/watchlist", label: "Tracked" },
+  { to: "/analytics", label: "Analytics" },
   { to: "/alerts", label: "Alerts" },
 ];
 
@@ -155,6 +157,7 @@ export default function App() {
         <Route path="/specials" element={protect(<Specials />)} />
         <Route path="/orders" element={protect(<Orders />)} />
         <Route path="/orders/:id" element={protect(<OrderDetailPage />)} />
+        <Route path="/analytics" element={protect(<Analytics />)} />
         <Route path="/watchlist" element={protect(<Watchlist />)} />
         <Route path="/alerts" element={protect(<Alerts />)} />
         <Route path="/admin/ingest" element={protect(<AdminIngest />)} />
