@@ -73,26 +73,35 @@ function Shell({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="min-h-screen flex">
-      {/* Mobile overlay backdrop */}
+    <div className="min-h-screen">
+      {/* Overlay backdrop */}
       {sidebarOpen && (
         <div
-          className="fixed inset-0 bg-black/30 z-40 lg:hidden"
+          className="fixed inset-0 bg-black/30 z-40"
           onClick={() => setSidebarOpen(false)}
         />
       )}
 
-      {/* Sidebar */}
+      {/* Floating sidebar — overlays content on all screen sizes */}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 w-56 bg-white border-r border-zinc-200 flex flex-col transition-transform duration-200 ease-in-out lg:translate-x-0 lg:static lg:z-auto ${
+        className={`fixed inset-y-0 left-0 z-50 w-56 bg-white border-r border-zinc-200 shadow-lg flex flex-col transition-transform duration-200 ease-in-out ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
-        {/* Logo */}
-        <div className="flex items-center h-14 px-4 border-b border-zinc-200 flex-shrink-0">
+        {/* Logo + close */}
+        <div className="flex items-center justify-between h-14 px-4 border-b border-zinc-200 flex-shrink-0">
           <NavLink to="/" className="font-semibold tracking-tight text-sm whitespace-nowrap">
             CELR Price Book
           </NavLink>
+          <button
+            onClick={() => setSidebarOpen(false)}
+            className="p-1 rounded-md text-zinc-400 hover:text-zinc-600 hover:bg-zinc-100"
+            aria-label="Close menu"
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
         </div>
 
         {/* Nav items */}
@@ -125,11 +134,11 @@ function Shell({ children }: { children: React.ReactNode }) {
         </div>
       </aside>
 
-      {/* Main content area */}
-      <div className="flex-1 flex flex-col min-w-0">
-        {/* Top bar (mobile only — hamburger + title) */}
-        <header className="sticky top-0 z-30 bg-white border-b border-zinc-200 lg:hidden">
-          <div className="flex items-center h-14 px-4">
+      {/* Main content area — full width always */}
+      <div className="flex flex-col min-h-screen">
+        {/* Top bar with hamburger — always visible */}
+        <header className="sticky top-0 z-30 bg-white border-b border-zinc-200">
+          <div className="flex items-center h-14 px-4 max-w-7xl mx-auto">
             <button
               onClick={() => setSidebarOpen(true)}
               className="p-2 -ml-2 rounded-md text-zinc-600 hover:bg-zinc-100"

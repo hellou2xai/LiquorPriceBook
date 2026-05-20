@@ -546,13 +546,23 @@ export default function Catalog() {
       </header>
 
       {/* Search bar */}
-      <input
-        type="text"
-        placeholder="Search code, description, brand..."
-        value={filters.search}
-        onChange={(e) => setFilters({ ...filters, search: e.target.value })}
-        className="w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm focus:border-zinc-900 focus:outline-none"
-      />
+      <div className="flex gap-2 items-center">
+        <input
+          type="text"
+          placeholder="Search code, description, brand..."
+          value={filters.search}
+          onChange={(e) => setFilters({ ...filters, search: e.target.value })}
+          className="flex-1 rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm focus:border-zinc-900 focus:outline-none"
+        />
+        {(filters.search || filters.categories.size > 0 || filters.brands.size > 0 || filters.divisions.size > 0 || filters.sizes.size > 0 || filters.hasRip !== null || filters.minPrice || filters.maxPrice) && (
+          <button
+            onClick={() => { updateFilters(EMPTY_FILTERS); }}
+            className="shrink-0 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-600 hover:bg-red-100"
+          >
+            Clear all
+          </button>
+        )}
+      </div>
 
       {/* Active filter chips */}
       <ActiveFilterChips filters={filters} onChange={updateFilters} />

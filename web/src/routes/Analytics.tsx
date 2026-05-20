@@ -89,8 +89,12 @@ const VIEWS: ViewCard[] = [
 function makeProductColumns(
   favCodes: Set<string>,
   favNotes: Map<string, string>,
+  activeView: AnalyticsView | null,
 ): Column<AnalyticsRow>[] {
-  return [
+  const showComparison = activeView ? COMPARISON_VIEWS.has(activeView) : true;
+  const showRip = activeView ? RIP_VIEWS.has(activeView) : true;
+
+  const cols: Column<AnalyticsRow>[] = [
     {
       key: "fav",
       label: "",
@@ -150,73 +154,102 @@ function makeProductColumns(
       render: (r) => <span className="font-mono text-sm">{r.case_cost ? `$${r.case_cost}` : "—"}</span>,
       sortValue: (r) => (r.case_cost ? parseFloat(r.case_cost) : 0),
     },
-    {
-      key: "prev_case_cost",
-      label: "Prev $",
-      sortable: true,
-      align: "right",
-      hideBelow: "md",
-      render: (r) =>
-        r.prev_case_cost ? (
-          <span className="font-mono text-xs text-zinc-400">${r.prev_case_cost}</span>
-        ) : (
-          <span className="text-zinc-300">—</span>
-        ),
-      sortValue: (r) => (r.prev_case_cost ? parseFloat(r.prev_case_cost) : 0),
-    },
-    {
-      key: "pct_change",
-      label: "Change",
-      sortable: true,
-      align: "right",
-      render: (r) => {
-        if (r.pct_change == null) return <span className="text-zinc-300">—</span>;
-        const color = r.pct_change < 0 ? "text-emerald-600" : r.pct_change > 0 ? "text-red-600" : "text-zinc-500";
-        return <span className={`text-xs font-medium ${color}`}>{r.pct_change > 0 ? "+" : ""}{r.pct_change}%</span>;
-      },
-      sortValue: (r) => r.pct_change ?? 0,
-    },
-    {
-      key: "rip_save",
-      label: "RIP Save",
-      sortable: true,
-      align: "right",
-      hideBelow: "sm",
-      render: (r) =>
-        r.rip_save ? (
-          <span className="text-xs text-emerald-600 font-medium">-${r.rip_save}</span>
-        ) : (
-          <span className="text-zinc-300">—</span>
-        ),
-      sortValue: (r) => (r.rip_save ? parseFloat(r.rip_save) : 0),
-    },
-    {
-      key: "effective_cost",
-      label: "Effective",
-      sortable: true,
-      align: "right",
-      hideBelow: "sm",
-      render: (r) =>
-        r.effective_cost ? (
-          <span className="font-mono text-xs text-emerald-700">${r.effective_cost}</span>
-        ) : (
-          <span className="text-zinc-300">—</span>
-        ),
-      sortValue: (r) => (r.effective_cost ? parseFloat(r.effective_cost) : 0),
-    },
-    {
-      key: "tag",
-      label: "Tag",
-      sortable: false,
-      hideBelow: "lg",
-      render: (r) =>
-        r.tag ? (
-          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-zinc-100 text-zinc-600">
-            {r.tag}
-          </span>
-        ) : null,
-    },
   ];
+
+  if (showComparison) {
+    cols.push(
+      {
+        key: "prev_case_cost",
+        label: "Prev $",
+        sortable: true,
+        align: "right",
+        hideBelow: "md",
+        render: (r) =>
+          r.prev_case_cost ? (
+            <span className="font-mono text-xs text-zinc-400">${r.prev_case_cost}</span>
+          ) : (
+            <span className="text-zinc-300">—</span>
+          ),
+        sortValue: (r) => (r.prev_case_cost ? parseFloat(r.prev_case_cost) : 0),
+      },
+      {
+        key: "pct_change",
+        label: "Change",
+        sortable: true,
+        align: "right",
+        render: (r) => {
+          if (r.pct_change == null) return <span className="text-zinc-300">—</span>;
+          const color = r.pct_change < 0 ? "text-emerald-600" : r.pct_change > 0 ? "text-red-600" : "text-zinc-500";
+          return <span className={`text-xs font-medium ${color}`}>{r.pct_change > 0 ? "+" : ""}{r.pct_change}%</span>;
+        },
+        sortValue: (r) => r.pct_change ?? 0,
+      },
+    );
+  }
+
+  if (showRip) {
+    cols.push(
+      {
+        key: "rip_save",
+        label: "RIP Save",
+        sortable: true,
+        align: "right",
+        hideBelow: "sm",
+        render: (r) =>
+          r.rip_save ? (
+            <span className="text-xs text-emerald-600 font-medium">-${r.rip_save}</span>
+          ) : (
+            <span className="text-zinc-300">—</span>
+          ),
+        sortValue: (r) => (r.rip_save ? parseFloat(r.rip_save) : 0),
+      },
+      {
+        key: "effective_cost",
+        label: "Effective",
+        sortable: true,
+        align: "right",
+        hideBelow: "sm",
+        render: (r) =>
+          r.effective_cost ? (
+            <span className="font-mono text-xs text-emerald-700">${r.effective_cost}</span>
+          ) : (
+            <span className="text-zinc-300">—</span>
+          ),
+        sortValue: (r) => (r.effective_cost ? parseFloat(r.effective_cost) : 0),
+      },
+    );
+  }
+
+  if (activeView === "closeout_rip") {
+    cols.push({
+      key: "closeout_pct",
+      label: "Closeout %",
+      sortable: true,
+      align: "right",
+      render: (r) =>
+        r.closeout_pct_off != null ? (
+          <span className="text-xs font-medium text-fuchsia-600">-{r.closeout_pct_off}%</span>
+        ) : (
+          <span className="text-zinc-300">—</span>
+        ),
+      sortValue: (r) => r.closeout_pct_off ?? 0,
+    });
+  }
+
+  cols.push({
+    key: "tag",
+    label: "Tag",
+    sortable: false,
+    hideBelow: "lg",
+    render: (r) =>
+      r.tag ? (
+        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-zinc-100 text-zinc-600">
+          {r.tag}
+        </span>
+      ) : null,
+  });
+
+  return cols;
 }
 
 const categoryColumns: Column<CategoryTrendRow>[] = [
@@ -301,6 +334,16 @@ const PCT_VIEWS = new Set<AnalyticsView>([
   "best_value",
 ]);
 
+// Views that compare editions (show Prev $ and Change columns)
+const COMPARISON_VIEWS = new Set<AnalyticsView>([
+  "price_drops", "price_increases", "watchlist_movers", "best_value",
+]);
+
+// Views that show RIP data columns
+const RIP_VIEWS = new Set<AnalyticsView>([
+  "new_rips", "lost_rips", "best_value", "closeout_rip",
+]);
+
 export default function Analytics() {
   const [activeView, setActiveView] = useState<AnalyticsView | null>(null);
 
@@ -321,8 +364,8 @@ export default function Analytics() {
   }, [wlQ.data]);
 
   const productColumns = useMemo(
-    () => makeProductColumns(favCodes, favNotes),
-    [favCodes, favNotes],
+    () => makeProductColumns(favCodes, favNotes, activeView),
+    [favCodes, favNotes, activeView],
   );
 
   const { data, isLoading, error } = useQuery({

@@ -194,7 +194,7 @@ _MODIFIER_WORDS = {
     "GIN", "VODKA", "RUM", "WHISKEY", "WHISKY", "BOURBON", "TEQUILA",
     "MEZCAL", "BRANDY", "COGNAC", "RYE", "SCOTCH", "MALT", "BLEND",
     "BLANCO", "REPOSADO", "ANEJO", "SPICED", "GOLD", "SILVER", "PROOF",
-    "BBN", "CASK", "BARREL", "STRAIGHT", "LIGHT", "DARK",
+    "BBN", "CASK", "BARREL", "STRAIGHT", "LIGHT", "DARK", "BLUE",
     "VS", "VSOP", "XO", "RARE", "OLD", "NEW",
     # Wine varietals
     "CHARDONNAY", "CABERNET", "SAUVIGNON", "PINOT", "GRIGIO", "NOIR",
@@ -259,6 +259,14 @@ def _is_brand_header(text):
     # (e.g. "12 YR OLD", "80 PROOF", "101 PROOF", "2023")
     if re.match(r"^\d", core):
         return False
+    # Sub-variant pattern: "<word> <digits> PROOF/YR/OLD/ML" or similar
+    # Catches "Blue 80 Proof", "Gold 100 Proof", "Aged 12 Yr", etc.
+    if re.match(
+        r"^[A-Za-z]+\s+\d+\s*"
+        r"(PROOF|YR|YEAR|OLD|ML|LTR|CS|PK)\b",
+        core, re.IGNORECASE,
+    ):
+        return False
     # Strip leading/trailing division codes from core text
     tokens = core.split()
     meaningful = [t for t in tokens
@@ -270,6 +278,17 @@ def _is_brand_header(text):
     if all(t.upper().rstrip(".,;") in _MODIFIER_WORDS
            or re.match(r"^(19|20)\d{2}$", t)
            for t in meaningful):
+        return False
+    # Lines where every token is a modifier, digit, or division code.
+    # Catches "Blue 80 Proof", "Gold 100 Proof" which previously slipped
+    # through because digit tokens were stripped from `meaningful`.
+    if all(
+        t.upper().rstrip(".,;") in _MODIFIER_WORDS
+        or re.search(r"\d", t)
+        or t.upper() in _VALID_DIVISIONS
+        or len(t) <= 1
+        for t in tokens
+    ):
         return False
     # Single token that's 1-3 characters is likely a code fragment
     if len(meaningful) == 1 and len(meaningful[0]) <= 3:

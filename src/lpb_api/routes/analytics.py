@@ -279,7 +279,7 @@ def _new_rips(session, current, previous, limit, user):
             case_cost=_money(r.case_cost),
             rip_save=_money(r.best_save),
             effective_cost=(
-                _money(r.case_cost - r.best_save)
+                _money(max(0, float(r.case_cost) - float(r.best_save)))
                 if r.case_cost and r.best_save else None
             ),
             rip_tier=f"{r.min_tier}CS",
@@ -353,8 +353,12 @@ def _lost_rips(session, current, previous, limit, user):
     )
 
 
-def _best_value(session, current, _previous, limit, user):
+def _best_value(session, current, previous, limit, user):
     """Products ranked by lowest effective cost (case_cost - best RIP save)."""
+    from sqlalchemy.orm import aliased
+
+    PrevPE = aliased(ProductEdition, name="prev_pe")
+
     stmt = (
         select(
             Product.code,
@@ -365,12 +369,17 @@ def _best_value(session, current, _previous, limit, user):
             Category.display_name.label("category"),
             Brand.display_name.label("brand"),
             func.max(RipOffer.save_amount).label("best_save"),
+            PrevPE.case_cost.label("prev_cost"),
         )
         .select_from(ProductEdition)
         .join(Product, Product.id == ProductEdition.product_id)
         .join(RipOffer, RipOffer.product_edition_id == ProductEdition.id)
         .outerjoin(Category, Category.id == ProductEdition.category_id)
         .outerjoin(Brand, Brand.id == ProductEdition.brand_id)
+        .outerjoin(PrevPE, and_(
+            PrevPE.product_id == ProductEdition.product_id,
+            PrevPE.book_edition_id == (previous.id if previous else None),
+        ))
         .where(
             ProductEdition.book_edition_id == current.id,
             ProductEdition.case_cost.is_not(None),
@@ -379,33 +388,38 @@ def _best_value(session, current, _previous, limit, user):
             Product.code, ProductEdition.description, ProductEdition.size,
             ProductEdition.case_cost, ProductEdition.divisions,
             Category.display_name, Brand.display_name,
+            PrevPE.case_cost,
         )
         .order_by(asc(ProductEdition.case_cost - func.max(RipOffer.save_amount)))
         .limit(limit)
     )
 
     rows = session.execute(stmt).all()
-    result = [
-        AnalyticsRow(
+    result = []
+    for r in rows:
+        eff = max(0, float(r.case_cost) - float(r.best_save)) if r.best_save else None
+        pct = None
+        if r.prev_cost and r.case_cost:
+            change = float(r.case_cost) - float(r.prev_cost)
+            pct = round(change / float(r.prev_cost) * 100, 1)
+        save_pct = (
+            round(float(r.best_save) / float(r.case_cost) * 100, 1)
+            if r.case_cost and r.best_save else None
+        )
+        result.append(AnalyticsRow(
             code=r.code, description=r.description, size=r.size,
             brand=r.brand, category=r.category, divisions=r.divisions,
             case_cost=_money(r.case_cost),
+            prev_case_cost=_money(r.prev_cost),
             rip_save=_money(r.best_save),
-            effective_cost=_money(r.case_cost - r.best_save) if r.best_save else None,
-            pct_change=(
-                round(float(r.best_save) / float(r.case_cost) * 100, 1)
-                if r.case_cost and r.best_save else None
-            ),
-            tag=(
-                f"Save {round(float(r.best_save) / float(r.case_cost) * 100, 1)}%"
-                if r.case_cost and r.best_save else None
-            ),
-        )
-        for r in rows
-    ]
+            effective_cost=_money(eff) if eff is not None else None,
+            pct_change=pct,
+            tag=f"Save {save_pct}%" if save_pct else None,
+        ))
 
     return AnalyticsResponse(
         view="best_value", edition_current=_label(current),
+        edition_previous=_label(previous) if previous else None,
         total=len(result), rows=result,
     )
 
@@ -457,7 +471,11 @@ def _closeout_rip(session, current, _previous, limit, user):
             case_cost=_money(r.closeout_case or r.case_cost),
             prev_case_cost=_money(r.original_case),
             rip_save=_money(r.best_save),
-            effective_cost=_money((r.closeout_case or r.case_cost or 0) - (r.best_save or 0)),
+            effective_cost=_money(max(
+                0,
+                float(r.closeout_case or r.case_cost or 0)
+                - float(r.best_save or 0),
+            )),
             is_closeout=True,
             closeout_pct_off=co_pct,
             tag="Closeout + RIP",
