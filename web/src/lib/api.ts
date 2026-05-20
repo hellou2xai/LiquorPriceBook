@@ -202,6 +202,19 @@ export type ProductDetail = {
   active_partials: Partial[];
 };
 
+export type DivisionFacet = { code: string; product_count: number };
+export type SizeFacet = { size: string; product_count: number };
+export type BrandFacet = { slug: string; display_name: string; product_count: number };
+export type Facets = {
+  divisions: DivisionFacet[];
+  sizes: SizeFacet[];
+  brands: BrandFacet[];
+  price_min: number | null;
+  price_max: number | null;
+  total_products: number;
+  total_with_rip: number;
+};
+
 export type RipRow = {
   code: string;
   description: string | null;
@@ -387,6 +400,7 @@ export const catalogApi = {
     category?: string[];
     brand?: string[];
     size?: string[];
+    division?: string[];
     search?: string;
     has_rip?: boolean;
     min_case_cost?: number;
@@ -397,6 +411,8 @@ export const catalogApi = {
   }) => api<ProductList>(`/api/v1/catalog/products${_qs(params)}`),
   product: (code: string, distributor = "nj-allied") =>
     api<ProductDetail>(`/api/v1/catalog/products/${code}${_qs({ distributor })}`),
+  facets: (distributor = "nj-allied") =>
+    api<Facets>(`/api/v1/catalog/facets${_qs({ distributor })}`),
 };
 
 export const insightsApi = {

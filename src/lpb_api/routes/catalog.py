@@ -16,7 +16,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, ConfigDict
-from sqlalchemy import and_, asc, desc, func, or_, select
+from sqlalchemy import and_, asc, desc, func, or_, select, text
 from sqlalchemy.orm import Session, aliased
 
 from lpb_core.db import get_session
@@ -116,6 +116,32 @@ class PartialOut(BaseModel):
     tier: str | None = None
     rip_price: Decimal | None = None
     match_confidence: Decimal | None = None
+
+
+class DivisionFacet(BaseModel):
+    code: str
+    product_count: int
+
+
+class SizeFacet(BaseModel):
+    size: str
+    product_count: int
+
+
+class BrandFacet(BaseModel):
+    slug: str
+    display_name: str
+    product_count: int
+
+
+class FacetsOut(BaseModel):
+    divisions: list[DivisionFacet]
+    sizes: list[SizeFacet]
+    brands: list[BrandFacet]
+    price_min: float | None
+    price_max: float | None
+    total_products: int
+    total_with_rip: int
 
 
 class ProductDetailOut(BaseModel):
@@ -274,6 +300,7 @@ def list_products(
     category: list[str] | None = Query(None, description="Slug; repeatable"),
     brand: list[str] | None = Query(None, description="Slug; repeatable"),
     size: list[str] | None = Query(None),
+    division: list[str] | None = Query(None, description="Division code; repeatable"),
     search: str | None = Query(None, min_length=2),
     has_rip: bool | None = Query(None),
     min_case_cost: float | None = Query(None, ge=0),
@@ -342,6 +369,18 @@ def list_products(
         base = base.where(Brand.slug.in_(brand))
     if size:
         base = base.where(ProductEdition.size.in_(size))
+    if division:
+        div_conditions = []
+        for d in division:
+            div_conditions.append(
+                or_(
+                    ProductEdition.divisions == d,
+                    ProductEdition.divisions.like(f"{d} %"),
+                    ProductEdition.divisions.like(f"% {d}"),
+                    ProductEdition.divisions.like(f"% {d} %"),
+                )
+            )
+        base = base.where(or_(*div_conditions))
     if search:
         pat = f"%{search}%"
         base = base.where(
@@ -385,7 +424,6 @@ def list_products(
     pe_ids = [r.product_edition_id for r in rows]
     pct_by_pe: dict[UUID, Decimal | None] = {}
     if pe_ids:
-        from sqlalchemy import text
         for pe_id, pct in session.execute(
             text(
                 "SELECT product_edition_id, case_cost_pct "
@@ -431,6 +469,98 @@ def list_products(
             label=_label(edition.year, edition.month),
             is_current=True,
         ),
+    )
+
+
+@router.get("/facets", response_model=FacetsOut)
+def get_facets(
+    distributor: str = Query("nj-allied"),
+    user: dict = Depends(get_current_user),  # noqa: B008
+    session: Session = Depends(get_session),  # noqa: B008
+):
+    edition = _current_edition(session, distributor)
+
+    # Divisions: split space-separated codes and count occurrences.
+    div_rows = session.execute(
+        text(
+            "SELECT code, count(*) AS cnt FROM ("
+            "  SELECT unnest(string_to_array(divisions, ' ')) AS code"
+            "  FROM product_editions"
+            "  WHERE book_edition_id = :eid"
+            "    AND divisions IS NOT NULL AND divisions != ''"
+            ") sub GROUP BY code ORDER BY cnt DESC"
+        ),
+        {"eid": edition.id},
+    ).all()
+    divisions = [DivisionFacet(code=r.code, product_count=r.cnt) for r in div_rows]
+
+    # Sizes with counts.
+    size_rows = session.execute(
+        select(
+            ProductEdition.size,
+            func.count(ProductEdition.id).label("cnt"),
+        )
+        .where(
+            ProductEdition.book_edition_id == edition.id,
+            ProductEdition.size.isnot(None),
+            ProductEdition.size != "",
+        )
+        .group_by(ProductEdition.size)
+        .order_by(desc("cnt"))
+    ).all()
+    sizes = [SizeFacet(size=r.size, product_count=r.cnt) for r in size_rows]
+
+    # Brands (top 200 by count).
+    brand_rows = session.execute(
+        select(
+            Brand.slug,
+            Brand.display_name,
+            func.count(ProductEdition.id).label("cnt"),
+        )
+        .join(ProductEdition, ProductEdition.brand_id == Brand.id)
+        .where(ProductEdition.book_edition_id == edition.id)
+        .group_by(Brand.slug, Brand.display_name)
+        .order_by(desc("cnt"))
+        .limit(200)
+    ).all()
+    brands_out = [
+        BrandFacet(slug=r.slug, display_name=r.display_name, product_count=r.cnt)
+        for r in brand_rows
+    ]
+
+    # Price range.
+    price_row = session.execute(
+        select(
+            func.min(ProductEdition.case_cost),
+            func.max(ProductEdition.case_cost),
+        ).where(
+            ProductEdition.book_edition_id == edition.id,
+            ProductEdition.case_cost.isnot(None),
+        )
+    ).first()
+    price_min = float(price_row[0]) if price_row and price_row[0] else None
+    price_max = float(price_row[1]) if price_row and price_row[1] else None
+
+    # Total products & total with RIP.
+    total_products = session.execute(
+        select(func.count(ProductEdition.id))
+        .where(ProductEdition.book_edition_id == edition.id)
+    ).scalar_one()
+
+    total_with_rip = session.execute(
+        select(func.count(func.distinct(RipOffer.product_edition_id)))
+        .join(ProductEdition, ProductEdition.id == RipOffer.product_edition_id)
+        .where(ProductEdition.book_edition_id == edition.id)
+    ).scalar_one()
+
+    return FacetsOut(
+        divisions=divisions,
+        sizes=sizes,
+        brands=brands_out,
+        price_min=price_min,
+        price_max=price_max,
+        total_products=total_products,
+        total_with_rip=total_with_rip,
     )
 
 
@@ -496,7 +626,6 @@ def product_detail(
     prev_case_cost = None
     case_cost_pct = None
     if pe.case_cost is not None:
-        from sqlalchemy import text
         mv = session.execute(
             text(
                 "SELECT prev_case_cost, case_cost_pct FROM mv_price_changes "

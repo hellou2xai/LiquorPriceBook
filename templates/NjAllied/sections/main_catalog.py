@@ -186,7 +186,8 @@ def parse_main_catalog(pages, source):
     rows = []
     current_brand = [None, None, None]   # one per lane
     current_divisions = [None, None, None]  # division codes per lane
-    last_product_idx = [None, None, None]   # row index in `rows` of the most recent product in this lane
+    # row index in `rows` of the most recent product per lane
+    last_product_idx = [None, None, None]
 
     for page in pages:
         category = get_category(page)
@@ -229,6 +230,7 @@ def parse_main_catalog(pages, source):
                         "rip_tier": None,
                         "rip_case_price": None,
                         "rip_btl_price": None,
+                        "rip_offers": [],
                         "page": page.page_number,
                         "lane": lane + 1,
                     })
@@ -253,7 +255,12 @@ def parse_main_catalog(pages, source):
                 rip = parse_rip_annot(text)
                 if rip is not None:
                     if last_product_idx[lane] is not None:
-                        rows[last_product_idx[lane]].update(rip)
+                        prod = rows[last_product_idx[lane]]
+                        prod["rip_offers"].append(rip)
+                        # Keep the best (highest save) as top-level fields
+                        prev = prod["rip_save_amount"]
+                        if prev is None or rip["rip_save_amount"] > prev:
+                            prod.update(rip)
                     continue
 
                 # Otherwise: brand header / sub-header

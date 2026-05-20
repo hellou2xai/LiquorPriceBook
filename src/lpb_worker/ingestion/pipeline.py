@@ -387,8 +387,7 @@ def _insert_rip_offers(
     book_edition_id: UUID,
     main_rows: list[dict[str, Any]],
 ) -> int:
-    """Insert one rip_offers row per product_edition that carries RIP data."""
-    # Look up product_edition_id for every (code) in this edition.
+    """Insert rip_offers rows — multiple tiers per product_edition."""
     ed_lookup = dict(
         session.execute(
             select(Product.code, ProductEdition.id)
@@ -399,32 +398,56 @@ def _insert_rip_offers(
 
     payload: list[dict[str, Any]] = []
     seen_pe_ids: set[UUID] = set()
+    seen_pe_tier: set[tuple[UUID, str]] = set()
     for r in main_rows:
-        save = _to_decimal(r.get("rip_save_amount"))
-        tier = r.get("rip_tier")
-        if save is None or tier is None:
-            continue
         pe_id = ed_lookup.get(r.get("code"))
-        if pe_id is None or pe_id in seen_pe_ids:
+        if pe_id is None:
             continue
-        tier_cases = min(_tier_to_cases(tier) or 1, 50)  # NJ law caps at 50
-        payload.append(
-            {
+        seen_pe_ids.add(pe_id)
+
+        # Use rip_offers list if present (multi-tier); fall back to
+        # single top-level fields for backwards compatibility.
+        offers = r.get("rip_offers") or []
+        if not offers:
+            save = _to_decimal(r.get("rip_save_amount"))
+            tier = r.get("rip_tier")
+            if save is not None and tier is not None:
+                offers = [{
+                    "rip_save_amount": save,
+                    "rip_tier": tier,
+                    "rip_case_price": r.get("rip_case_price"),
+                    "rip_btl_price": r.get("rip_btl_price"),
+                }]
+
+        for o in offers:
+            save = _to_decimal(o.get("rip_save_amount"))
+            tier = o.get("rip_tier")
+            if save is None or tier is None:
+                continue
+            key = (pe_id, tier)
+            if key in seen_pe_tier:
+                continue
+            seen_pe_tier.add(key)
+            tier_cases = min(
+                _tier_to_cases(tier) or 1, 50
+            )
+            payload.append({
                 "product_edition_id": pe_id,
                 "tier": tier,
                 "tier_cases": tier_cases,
                 "save_amount": save,
-                "case_price": _to_decimal(r.get("rip_case_price")),
-                "btl_price": _to_decimal(r.get("rip_btl_price")),
-            }
-        )
-        seen_pe_ids.add(pe_id)
+                "case_price": _to_decimal(o.get("rip_case_price")),
+                "btl_price": _to_decimal(o.get("rip_btl_price")),
+            })
+
     if not payload:
         return 0
     session.execute(
-        delete(RipOffer).where(RipOffer.product_edition_id.in_(seen_pe_ids))
+        delete(RipOffer).where(
+            RipOffer.product_edition_id.in_(seen_pe_ids)
+        )
     )
-    session.execute(pg_insert(RipOffer).values(payload))
+    _batched_insert(session, RipOffer, payload)
     return len(payload)
 
 
