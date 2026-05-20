@@ -305,18 +305,29 @@ def parse_main_catalog(pages, source):
     current_divisions = [None, None, None]  # division codes per lane
     # row index in `rows` of the most recent product per lane
     last_product_idx = [None, None, None]
+    # Buffer for potential wrapped sub-brand detection.
+    # When a line looks like a brand but might be the first line of a
+    # wrapped sub-brand, we buffer it. If the next text line has divisions,
+    # we concatenate them as sub-brand instead of committing the buffer as brand.
+    pending_brand = [None, None, None]  # buffered "brand" text, not yet committed
+    saved_brand = [None, None, None]    # brand that was active before the buffer
 
     for page in pages:
+        # Content flows: lane 0 → 1 → 2 → next page lane 0.
+        # Carry brand context from lane 2 to lane 0 at page boundaries.
+        if current_brand[2] is not None:
+            current_brand[0] = current_brand[2]
+            current_divisions[0] = current_divisions[2]
+        current_sub[0] = None
+        last_sub[0] = None
+        pending_brand[0] = None
+        saved_brand[0] = None
+
         category = get_category(page)
         words = page.extract_words()
         words = [w for w in words
                  if PAGE_HEADER_Y < w["top"] < PAGE_FOOTER_Y]
         clusters = cluster_rows(words)
-
-        # Reset last-product trackers per page so a RIP at the top of a new page
-        # doesn't accidentally attach to the previous page's last row.
-        # (Actually keep them: RIPs can legitimately apply to the same brand
-        # continuing across pages. Leave alone.)
 
         for cluster in clusters:
             row_words = cluster["words"]
@@ -328,6 +339,14 @@ def parse_main_catalog(pages, source):
                 first_text = lane_words[0]["text"].strip()
 
                 if is_product_code(first_text):
+                    # A product code appeared — commit any pending brand buffer.
+                    if pending_brand[lane] is not None:
+                        current_brand[lane] = pending_brand[lane]
+                        current_sub[lane] = None
+                        last_sub[lane] = None
+                        pending_brand[lane] = None
+                        saved_brand[lane] = None
+
                     vals = assemble_row_values(lane_words, lane)
                     # Use current_sub if set; otherwise carry forward last_sub
                     # (multiple sizes of same product share the sub-brand).
@@ -401,9 +420,37 @@ def parse_main_catalog(pages, source):
                     # In Allied format, division codes appear on sub-brand
                     # lines, not brand lines. Brand headers have country in
                     # parens (e.g. "(SWEDEN)") or no parens at all.
-                    current_brand[lane] = text
-                    current_sub[lane] = None
-                    last_sub[lane] = None  # Reset carry-forward on new brand
+                    # Short lines (≤3 words) are real brands — commit immediately.
+                    # Longer lines (4+ words) might be wrapped sub-brands — buffer.
+                    core = _TERRITORY_PAREN_RE.sub(" ", text).strip()
+                    word_count = len(core.split())
+                    if word_count <= 3:
+                        # Definitely a brand — commit any pending buffer first
+                        if pending_brand[lane] is not None:
+                            pending_brand[lane] = None
+                            saved_brand[lane] = None
+                        current_brand[lane] = text
+                        current_sub[lane] = None
+                        last_sub[lane] = None
+                    else:
+                        # 4+ words — might be a wrapped sub-brand first line.
+                        # Buffer it; if next line has divisions, it's a wrap.
+                        saved_brand[lane] = current_brand[lane]
+                        pending_brand[lane] = text
                 else:
-                    current_sub[lane] = text
+                    if pending_brand[lane] is not None:
+                        if divs:
+                            # The buffered "brand" was a wrapped sub-brand.
+                            # Concatenate with this line and keep old brand.
+                            current_sub[lane] = pending_brand[lane] + " " + text
+                            current_brand[lane] = saved_brand[lane]
+                        else:
+                            # Next line has no divisions — buffer was a real brand.
+                            current_brand[lane] = pending_brand[lane]
+                            current_sub[lane] = text
+                            last_sub[lane] = None
+                        pending_brand[lane] = None
+                        saved_brand[lane] = None
+                    else:
+                        current_sub[lane] = text
     return rows
