@@ -359,3 +359,34 @@ class TestInsights:
     def test_dashboard_movers(self, api):
         data = api.get("/api/v1/dashboard/movers")
         assert isinstance(data, list)
+
+
+# ---------------------------------------------------------------------------
+# Pricing Analytics
+# ---------------------------------------------------------------------------
+
+class TestAnalytics:
+    VIEWS = [
+        "price_drops", "price_increases", "new_rips", "lost_rips",
+        "best_value", "closeout_rip", "category_trends",
+        "new_products", "discontinued", "watchlist_movers",
+    ]
+
+    @pytest.mark.parametrize("view", VIEWS)
+    def test_view(self, api, view):
+        data = api.get(f"/api/v1/analytics?view={view}&limit=5")
+        assert isinstance(data, dict)
+        assert data["view"] == view
+        assert "total" in data
+        assert "edition_current" in data
+        if view == "category_trends":
+            assert isinstance(data.get("category_rows", []), list)
+        else:
+            assert isinstance(data.get("rows", []), list)
+
+    def test_invalid_view(self, api):
+        try:
+            api.get("/api/v1/analytics?view=invalid_view")
+            assert False, "Should have raised error"
+        except Exception:
+            pass  # expected 400
