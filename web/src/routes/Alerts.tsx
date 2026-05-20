@@ -1,7 +1,10 @@
+import { useMemo } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 
 import { insightsApi } from "../lib/api";
+import type { AlertEvent } from "../lib/api";
+import SortableTable, { useSort, Column } from "../components/SortableTable";
 
 const RULE_LABELS: Record<string, string> = {
   price_drop_pct: "Price drop",
@@ -24,10 +27,65 @@ const RULE_TONE: Record<string, string> = {
 };
 
 export default function Alerts() {
+  const { sort, toggle, sorted } = useSort<AlertEvent>({ key: "fired_at", direction: "desc" });
+
   const q = useQuery({
     queryKey: ["alerts", { full: true }],
     queryFn: () => insightsApi.alerts({ limit: 200 }),
   });
+
+  const data = q.data ?? [];
+  const sortedData = useMemo(() => sorted(data, columns), [data, sorted]);
+
+  const columns: Column<AlertEvent>[] = [
+    {
+      key: "rule_type",
+      label: "Type",
+      sortable: true,
+      sortValue: (a) => a.rule_type,
+      render: (a) => (
+        <span className={`inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium ${RULE_TONE[a.rule_type] ?? "bg-zinc-50 border-zinc-200 text-zinc-700"}`}>
+          {RULE_LABELS[a.rule_type] ?? a.rule_type}
+        </span>
+      ),
+    },
+    {
+      key: "product_code",
+      label: "Product",
+      sortable: true,
+      sortValue: (a) => a.product_code ?? "",
+      render: (a) =>
+        a.product_code ? (
+          <Link to={`/catalog/${a.product_code}`} className="font-mono text-xs hover:underline">{a.product_code}</Link>
+        ) : (
+          <span className="text-zinc-300 text-xs">{"\u2014"}</span>
+        ),
+    },
+    {
+      key: "details",
+      label: "Details",
+      sortable: false,
+      render: (a) => (
+        <span className="text-zinc-700">
+          {String((a.payload as Record<string, unknown>).description ?? "")}
+          {(a.payload as Record<string, unknown>).pct != null && (
+            <span className="text-zinc-500"> · {Number((a.payload as Record<string, unknown>).pct).toFixed(1)}%</span>
+          )}
+          {(a.payload as Record<string, unknown>).save_amount != null && (
+            <span className="text-zinc-500"> · save ${Number((a.payload as Record<string, unknown>).save_amount).toFixed(2)}</span>
+          )}
+        </span>
+      ),
+    },
+    {
+      key: "fired_at",
+      label: "Fired",
+      sortable: true,
+      align: "right",
+      sortValue: (a) => a.fired_at,
+      render: (a) => <span className="text-xs text-zinc-500 whitespace-nowrap">{new Date(a.fired_at).toLocaleString()}</span>,
+    },
+  ];
 
   return (
     <div className="space-y-5">
@@ -39,50 +97,18 @@ export default function Alerts() {
       </header>
 
       <div className="rounded-lg border border-zinc-200 bg-white overflow-hidden">
-        <ul className="divide-y divide-zinc-100">
-          {q.isLoading ? (
-            <li className="px-4 py-6 text-center text-zinc-500 text-sm">Loading…</li>
-          ) : (q.data ?? []).length === 0 ? (
-            <li className="px-4 py-6 text-center text-zinc-500 text-sm">
-              No alerts yet.
-            </li>
-          ) : (
-            q.data!.map((a) => (
-              <li key={a.id} className="px-4 py-3 text-sm flex flex-col md:flex-row md:items-center gap-2">
-                <span
-                  className={`inline-flex w-fit items-center rounded-md border px-2 py-0.5 text-xs font-medium ${
-                    RULE_TONE[a.rule_type] ?? "bg-zinc-50 border-zinc-200 text-zinc-700"
-                  }`}
-                >
-                  {RULE_LABELS[a.rule_type] ?? a.rule_type}
-                </span>
-                {a.product_code ? (
-                  <Link
-                    to={`/catalog/${a.product_code}`}
-                    className="font-mono text-xs hover:underline"
-                  >
-                    {a.product_code}
-                  </Link>
-                ) : null}
-                <div className="flex-1 text-zinc-700">
-                  {String((a.payload as any).description ?? "")}
-                  {(a.payload as any).pct != null ? (
-                    <span className="text-zinc-500"> · {Number((a.payload as any).pct).toFixed(1)}%</span>
-                  ) : null}
-                  {(a.payload as any).save_amount != null ? (
-                    <span className="text-zinc-500">
-                      {" "}
-                      · save ${Number((a.payload as any).save_amount).toFixed(2)}
-                    </span>
-                  ) : null}
-                </div>
-                <span className="text-xs text-zinc-500">
-                  {new Date(a.fired_at).toLocaleString()}
-                </span>
-              </li>
-            ))
-          )}
-        </ul>
+        {q.isLoading ? (
+          <div className="text-center py-12 text-zinc-500">Loading...</div>
+        ) : (
+          <SortableTable
+            columns={columns}
+            data={sortedData}
+            sort={sort}
+            onSort={toggle}
+            rowKey={(a) => a.id}
+            emptyMessage="No alerts yet."
+          />
+        )}
       </div>
     </div>
   );

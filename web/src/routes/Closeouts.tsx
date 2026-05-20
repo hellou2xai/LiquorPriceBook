@@ -6,30 +6,14 @@ import { insightsApi, watchlistApi } from "../lib/api";
 import type { CloseoutRow } from "../lib/api";
 import { money } from "../lib/fmt";
 import FavoriteButton from "../components/FavoriteButton";
-
-type SortKey = "pct_off" | "case_save" | "best_case" | "days";
-
-function sortRows(rows: CloseoutRow[], key: SortKey): CloseoutRow[] {
-  const copy = [...rows];
-  switch (key) {
-    case "pct_off":
-      return copy.sort((a, b) => (b.pct_off ?? 0) - (a.pct_off ?? 0));
-    case "case_save":
-      return copy.sort((a, b) => parseFloat(String(b.case_save ?? "0")) - parseFloat(String(a.case_save ?? "0")));
-    case "best_case":
-      return copy.sort((a, b) => parseFloat(String(a.best_case ?? "999999")) - parseFloat(String(b.best_case ?? "999999")));
-    case "days":
-      return copy.sort((a, b) => b.days_on_list - a.days_on_list);
-    default:
-      return copy;
-  }
-}
+import SortableTable, { useSort, Column } from "../components/SortableTable";
 
 export default function Closeouts() {
   const [search, setSearch] = useState("");
-  const [sort, setSort] = useState<SortKey>("pct_off");
   const [minPct, setMinPct] = useState(0);
   const [daysFilter, setDaysFilter] = useState<"" | "new" | "aging">("");
+
+  const { sort, toggle, sorted } = useSort<CloseoutRow>({ key: "pct_off", direction: "desc" });
 
   const wlQ = useQuery({ queryKey: ["watchlist"], queryFn: () => watchlistApi.list() });
   const favCodes = useMemo(() => new Set((wlQ.data ?? []).map((w) => w.product_code)), [wlQ.data]);
@@ -60,8 +44,10 @@ export default function Closeouts() {
     } else if (daysFilter === "aging") {
       rows = rows.filter((r) => r.days_on_list > 30);
     }
-    return sortRows(rows, sort);
-  }, [q.data, search, minPct, daysFilter, sort]);
+    return rows;
+  }, [q.data, search, minPct, daysFilter]);
+
+  const sortedRows = useMemo(() => sorted(filteredRows, columns), [filteredRows, sorted]);
 
   const stats = useMemo(() => {
     const rows = filteredRows;
@@ -71,6 +57,92 @@ export default function Closeouts() {
     const newCount = rows.filter((r) => r.days_on_list <= 30).length;
     return { count: rows.length, totalSave, avgPct, newCount };
   }, [filteredRows]);
+
+  const columns: Column<CloseoutRow>[] = [
+    {
+      key: "fav",
+      label: "",
+      thClassName: "w-8",
+      render: (r) => (
+        <FavoriteButton code={r.code} isFavorite={favCodes.has(r.code)} note={favNotes.get(r.code)} showNote />
+      ),
+    },
+    {
+      key: "code",
+      label: "Code",
+      sortable: true,
+      sortValue: (r) => r.code,
+      render: (r) => (
+        <Link to={`/catalog/${r.code}`} className="font-mono text-xs hover:underline">{r.code}</Link>
+      ),
+    },
+    {
+      key: "description",
+      label: "Description",
+      sortable: true,
+      sortValue: (r) => r.description ?? "",
+      render: (r) => <span>{r.description ?? "\u2014"}</span>,
+    },
+    {
+      key: "size",
+      label: "Size",
+      sortable: true,
+      sortValue: (r) => r.size ?? "",
+      render: (r) => <span className="text-zinc-600">{r.size ?? "\u2014"}</span>,
+    },
+    {
+      key: "original_case",
+      label: "Original Case",
+      sortable: true,
+      align: "right",
+      sortValue: (r) => r.original_case ? parseFloat(r.original_case) : null,
+      render: (r) => <span className="tabular-nums line-through text-zinc-400">{money(r.original_case)}</span>,
+    },
+    {
+      key: "best_case",
+      label: "Best Case",
+      sortable: true,
+      align: "right",
+      sortValue: (r) => r.best_case ? parseFloat(r.best_case) : null,
+      render: (r) => <span className="tabular-nums font-medium text-emerald-700">{money(r.best_case)}</span>,
+    },
+    {
+      key: "case_save",
+      label: "Save",
+      sortable: true,
+      align: "right",
+      sortValue: (r) => r.case_save ? parseFloat(r.case_save) : null,
+      render: (r) => <span className="tabular-nums text-emerald-700">{money(r.case_save)}</span>,
+    },
+    {
+      key: "pct_off",
+      label: "% Off",
+      sortable: true,
+      align: "right",
+      sortValue: (r) => r.pct_off,
+      render: (r) =>
+        r.pct_off == null ? (
+          <span className="text-zinc-300">{"\u2014"}</span>
+        ) : (
+          <span className={r.pct_off >= 10 ? "text-emerald-700 font-medium" : ""}>{r.pct_off.toFixed(1)}%</span>
+        ),
+    },
+    {
+      key: "days_on_list",
+      label: "Days on List",
+      sortable: true,
+      align: "right",
+      sortValue: (r) => r.days_on_list,
+      render: (r) =>
+        r.days_on_list > 60 ? (
+          <span className="text-red-600 font-medium">{r.days_on_list}d</span>
+        ) : r.days_on_list > 30 ? (
+          <span className="text-amber-700">{r.days_on_list}d</span>
+        ) : (
+          <span className="text-zinc-600">{r.days_on_list}d</span>
+        ),
+    },
+  ];
 
   return (
     <div className="space-y-5">
@@ -107,77 +179,29 @@ export default function Closeouts() {
           className="w-64 rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm placeholder:text-zinc-400 focus:border-zinc-900 focus:outline-none" />
         <select value={daysFilter} onChange={(e) => setDaysFilter(e.target.value as "" | "new" | "aging")} className="rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-sm">
           <option value="">All items</option>
-          <option value="new">New (≤30 days)</option>
-          <option value="aging">Aging (&gt;30 days)</option>
+          <option value="new">New (30 days or less)</option>
+          <option value="aging">Aging (more than 30 days)</option>
         </select>
         <label className="text-sm text-zinc-700 flex items-center gap-2">
           Min %
           <input type="number" value={minPct} onChange={(e) => setMinPct(parseFloat(e.target.value) || 0)}
             min={0} max={100} step={1} className="w-16 rounded-md border border-zinc-300 bg-white px-2 py-1 text-sm" />
         </label>
-        <select value={sort} onChange={(e) => setSort(e.target.value as SortKey)} className="rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-sm">
-          <option value="pct_off">Sort by % off</option>
-          <option value="case_save">Sort by $ saved</option>
-          <option value="best_case">Sort by best case price</option>
-          <option value="days">Sort by days on list</option>
-        </select>
       </div>
 
       <div className="rounded-lg border border-zinc-200 bg-white overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-zinc-200 text-sm">
-            <thead className="bg-zinc-50 text-left text-xs uppercase tracking-wide text-zinc-500">
-              <tr>
-                <th className="px-3 py-2 w-8"></th>
-                <th className="px-4 py-2">Code</th>
-                <th className="px-4 py-2">Description</th>
-                <th className="px-4 py-2">Size</th>
-                <th className="px-4 py-2 text-right">Original case</th>
-                <th className="px-4 py-2 text-right">Best case</th>
-                <th className="px-4 py-2 text-right">Save</th>
-                <th className="px-4 py-2 text-right">% off</th>
-                <th className="px-4 py-2 text-right">Days on list</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-zinc-100">
-              {q.isLoading ? (
-                <tr><td colSpan={9} className="px-4 py-6 text-center text-zinc-500">Loading...</td></tr>
-              ) : filteredRows.length === 0 ? (
-                <tr><td colSpan={9} className="px-4 py-6 text-center text-zinc-500">No closeouts match your filters.</td></tr>
-              ) : (
-                filteredRows.map((r) => (
-                  <tr key={r.code} className={`hover:bg-zinc-50 ${r.days_on_list > 60 ? "bg-red-50/30" : ""}`}>
-                    <td className="px-3 py-2">
-                      <FavoriteButton code={r.code} isFavorite={favCodes.has(r.code)} note={favNotes.get(r.code)} showNote />
-                    </td>
-                    <td className="px-4 py-2 font-mono text-xs">
-                      <Link to={`/catalog/${r.code}`} className="hover:underline">{r.code}</Link>
-                    </td>
-                    <td className="px-4 py-2">{r.description ?? "\u2014"}</td>
-                    <td className="px-4 py-2 text-zinc-600">{r.size ?? "\u2014"}</td>
-                    <td className="px-4 py-2 text-right tabular-nums line-through text-zinc-400">{money(r.original_case)}</td>
-                    <td className="px-4 py-2 text-right tabular-nums font-medium text-emerald-700">{money(r.best_case)}</td>
-                    <td className="px-4 py-2 text-right tabular-nums text-emerald-700">{money(r.case_save)}</td>
-                    <td className="px-4 py-2 text-right tabular-nums">
-                      {r.pct_off == null ? "\u2014" : (
-                        <span className={r.pct_off >= 10 ? "text-emerald-700 font-medium" : ""}>{r.pct_off.toFixed(1)}%</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-2 text-right tabular-nums">
-                      {r.days_on_list > 60 ? (
-                        <span className="text-red-600 font-medium">{r.days_on_list}d</span>
-                      ) : r.days_on_list > 30 ? (
-                        <span className="text-amber-700">{r.days_on_list}d</span>
-                      ) : (
-                        <span className="text-zinc-600">{r.days_on_list}d</span>
-                      )}
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+        {q.isLoading ? (
+          <div className="text-center py-12 text-zinc-500">Loading...</div>
+        ) : (
+          <SortableTable
+            columns={columns}
+            data={sortedRows}
+            sort={sort}
+            onSort={toggle}
+            rowKey={(r) => r.code}
+            emptyMessage="No closeouts match your filters."
+          />
+        )}
       </div>
     </div>
   );

@@ -611,11 +611,19 @@ class Watchlist(Base):
     is_default: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=text("false")
     )
+    # Order management fields
+    division: Mapped[str | None] = mapped_column(String(16))
+    status: Mapped[str] = mapped_column(
+        String(32), nullable=False, server_default=text("'draft'")
+    )
+    order_notes: Mapped[str | None] = mapped_column(Text)
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = _now()
     updated_at: Mapped[datetime] = _updated()
 
     __table_args__ = (
         Index("ix_watchlists_tenant_id", "tenant_id"),
+        Index("ix_watchlists_tenant_status", "tenant_id", "status"),
     )
 
 
@@ -636,6 +644,14 @@ class WatchlistItem(Base):
     target_case_price: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
     target_btl_price: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
     notes: Mapped[str | None] = mapped_column(Text)
+    # Order quantity tracking
+    qty_cases: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default=text("0")
+    )
+    qty_bottles: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default=text("0")
+    )
+    selected_rip_tier: Mapped[str | None] = mapped_column(String(16))
     created_at: Mapped[datetime] = _now()
 
     __table_args__ = (

@@ -2,11 +2,15 @@ import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { insightsApi } from "../lib/api";
+import type { ComboRow } from "../lib/api";
 import { money } from "../lib/fmt";
+import SortableTable, { useSort, Column } from "../components/SortableTable";
 
 export default function Combos() {
   const [search, setSearch] = useState("");
   const [selectedCat, setSelectedCat] = useState("");
+
+  const { sort, toggle, sorted } = useSort<ComboRow>({ key: "sku", direction: "asc" });
 
   const combosQ = useQuery({
     queryKey: ["combos", { search, subcategory: selectedCat }],
@@ -27,6 +31,47 @@ export default function Combos() {
   }, [combosQ.data]);
 
   const rows = combosQ.data ?? [];
+  const sortedRows = useMemo(() => sorted(rows, columns), [rows, sorted]);
+
+  const columns: Column<ComboRow>[] = [
+    {
+      key: "sku",
+      label: "SKU",
+      sortable: true,
+      sortValue: (r) => r.sku,
+      render: (r) => <span className="font-mono text-xs whitespace-nowrap">{r.sku}</span>,
+    },
+    {
+      key: "subcategory",
+      label: "Category",
+      sortable: true,
+      sortValue: (r) => r.subcategory ?? "",
+      render: (r) => <span className="text-zinc-600 whitespace-nowrap">{r.subcategory ?? "\u2014"}</span>,
+    },
+    {
+      key: "item_code",
+      label: "Item Code",
+      sortable: true,
+      sortValue: (r) => r.item_code ?? "",
+      render: (r) => <span className="font-mono text-xs text-zinc-600 whitespace-nowrap">{r.item_code ?? "\u2014"}</span>,
+    },
+    {
+      key: "contains",
+      label: "Contains",
+      sortable: true,
+      sortValue: (r) => r.contains ?? "",
+      className: "max-w-md truncate",
+      render: (r) => <span title={r.contains ?? ""}>{r.contains ?? "\u2014"}</span>,
+    },
+    {
+      key: "front_line_price",
+      label: "Front-Line Price",
+      sortable: true,
+      align: "right",
+      sortValue: (r) => r.front_line_price ? parseFloat(r.front_line_price) : null,
+      render: (r) => <span className="tabular-nums whitespace-nowrap">{money(r.front_line_price)}</span>,
+    },
+  ];
 
   return (
     <div className="space-y-5">
@@ -43,7 +88,7 @@ export default function Combos() {
           placeholder="Search SKU, code, or contents..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="w-64 rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm placeholder:text-zinc-400 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+          className="w-64 rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm placeholder:text-zinc-400 focus:border-zinc-900 focus:outline-none"
         />
         {subcategories.length > 0 && (
           <select
@@ -53,61 +98,25 @@ export default function Combos() {
           >
             <option value="">All categories</option>
             {subcategories.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
+              <option key={c} value={c}>{c}</option>
             ))}
           </select>
         )}
       </div>
 
       <div className="rounded-lg border border-zinc-200 bg-white overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-zinc-200 text-sm">
-            <thead className="bg-zinc-50 text-left text-xs uppercase tracking-wide text-zinc-500">
-              <tr>
-                <th className="px-4 py-2">SKU</th>
-                <th className="px-4 py-2">Category</th>
-                <th className="px-4 py-2">Item Code</th>
-                <th className="px-4 py-2">Contains</th>
-                <th className="px-4 py-2 text-right">Front-Line Price</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-zinc-100">
-              {combosQ.isLoading ? (
-                <tr>
-                  <td colSpan={5} className="px-4 py-6 text-center text-zinc-500">
-                    Loading...
-                  </td>
-                </tr>
-              ) : rows.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="px-4 py-6 text-center text-zinc-500">
-                    No combos found.
-                  </td>
-                </tr>
-              ) : (
-                rows.map((c) => (
-                  <tr key={c.sku} className="hover:bg-zinc-50">
-                    <td className="px-4 py-2 font-mono text-xs whitespace-nowrap">{c.sku}</td>
-                    <td className="px-4 py-2 text-zinc-600 whitespace-nowrap">
-                      {c.subcategory ?? "—"}
-                    </td>
-                    <td className="px-4 py-2 font-mono text-xs text-zinc-600 whitespace-nowrap">
-                      {c.item_code ?? "—"}
-                    </td>
-                    <td className="px-4 py-2 max-w-md truncate" title={c.contains ?? ""}>
-                      {c.contains ?? "—"}
-                    </td>
-                    <td className="px-4 py-2 text-right tabular-nums whitespace-nowrap">
-                      {money(c.front_line_price)}
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+        {combosQ.isLoading ? (
+          <div className="text-center py-12 text-zinc-500">Loading...</div>
+        ) : (
+          <SortableTable
+            columns={columns}
+            data={sortedRows}
+            sort={sort}
+            onSort={toggle}
+            rowKey={(r) => r.sku}
+            emptyMessage="No combos found."
+          />
+        )}
       </div>
     </div>
   );

@@ -13,6 +13,8 @@ import Watchlist from "./routes/Watchlist";
 import Alerts from "./routes/Alerts";
 import AdminIngest from "./routes/AdminIngest";
 import Specials from "./routes/Specials";
+import Orders from "./routes/Orders";
+import OrderDetailPage from "./routes/OrderDetail";
 import Settings from "./routes/Settings";
 import Login from "./routes/Login";
 
@@ -23,7 +25,8 @@ const NAV = [
   { to: "/closeouts", label: "Closeouts" },
   { to: "/combos", label: "Combos" },
   { to: "/specials", label: "Specials" },
-  { to: "/watchlist", label: "Order List" },
+  { to: "/orders", label: "Orders" },
+  { to: "/watchlist", label: "Tracked" },
   { to: "/alerts", label: "Alerts" },
 ];
 
@@ -99,6 +102,8 @@ export default function App() {
         <Route path="/closeouts" element={protect(<Closeouts />)} />
         <Route path="/combos" element={protect(<Combos />)} />
         <Route path="/specials" element={protect(<Specials />)} />
+        <Route path="/orders" element={protect(<Orders />)} />
+        <Route path="/orders/:id" element={protect(<OrderDetailPage />)} />
         <Route path="/watchlist" element={protect(<Watchlist />)} />
         <Route path="/alerts" element={protect(<Alerts />)} />
         <Route path="/admin/ingest" element={protect(<AdminIngest />)} />

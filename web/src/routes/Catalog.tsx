@@ -573,9 +573,19 @@ export default function Catalog() {
                   <tr>
                     <th className="px-3 py-2 w-8" />
                     <th className="px-3 py-2">Code</th>
-                    <th className="px-3 py-2">Description</th>
+                    <th
+                      className={`px-3 py-2 cursor-pointer select-none hover:text-zinc-700 ${filters.sort === "name" ? "text-zinc-900" : ""}`}
+                      onClick={() => updateFilters({ ...filters, sort: "name" })}
+                    >
+                      Description {filters.sort === "name" && <span className="text-[10px]">▲</span>}
+                    </th>
                     <th className="px-3 py-2">Size</th>
-                    <th className="px-3 py-2 text-right">Case</th>
+                    <th
+                      className={`px-3 py-2 text-right cursor-pointer select-none hover:text-zinc-700 ${filters.sort.startsWith("case_cost") ? "text-zinc-900" : ""}`}
+                      onClick={() => updateFilters({ ...filters, sort: filters.sort === "case_cost_asc" ? "case_cost_desc" : "case_cost_asc" })}
+                    >
+                      Case {filters.sort === "case_cost_asc" ? <span className="text-[10px]">▲</span> : filters.sort === "case_cost_desc" ? <span className="text-[10px]">▼</span> : null}
+                    </th>
                     <th className="px-3 py-2 text-right">Btl</th>
                     <th className="px-3 py-2 text-right">MoM</th>
                     <th className="px-3 py-2">Top RIP</th>

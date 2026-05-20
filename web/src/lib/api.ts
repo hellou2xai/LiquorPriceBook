@@ -509,3 +509,115 @@ export const specialsApi = {
   active: (distributor = "nj-allied") =>
     api<WebSpecial[]>(`/api/v1/specials${_qs({ distributor })}`),
 };
+
+// ---------- Orders (named orders with division + payment analysis) ----------
+
+export type OrderSummary = {
+  id: string;
+  name: string;
+  division: string | null;
+  status: string;
+  order_notes: string | null;
+  item_count: number;
+  total_cases: number;
+  total_bottles: number;
+  invoice_total: string | null;
+  rip_rebate_total: string | null;
+  effective_total: string | null;
+  created_at: string;
+  updated_at: string;
+  submitted_at: string | null;
+};
+
+export type OrderRipTier = {
+  tier: string;
+  tier_cases: number;
+  save_amount: string;
+  case_price: string | null;
+  btl_price: string | null;
+};
+
+export type OrderRecommendation = {
+  type: string;
+  message: string;
+  priority: string;
+};
+
+export type OrderLine = {
+  product_code: string;
+  description: string | null;
+  size: string | null;
+  pack: number | null;
+  category_slug: string | null;
+  category_display: string | null;
+  brand_slug: string | null;
+  brand_display: string | null;
+  divisions: string | null;
+  case_cost: string | null;
+  btl_cost: string | null;
+  qty_cases: number;
+  qty_bottles: number;
+  selected_rip_tier: string | null;
+  notes: string | null;
+  has_rip: boolean;
+  rip_tiers: OrderRipTier[];
+  best_rip_save: string | null;
+  line_invoice: string | null;
+  line_rip_rebate: string | null;
+  line_effective: string | null;
+  recommendations: OrderRecommendation[];
+  is_closeout: boolean;
+};
+
+export type PaymentCategoryBreakdown = {
+  category: string;
+  invoice: string;
+  rebate: string;
+  effective: string;
+  item_count: number;
+};
+
+export type PaymentAnalysis = {
+  invoice_total: string;
+  rip_rebate_total: string;
+  effective_total: string;
+  rip_pct_of_order: string | null;
+  by_category: PaymentCategoryBreakdown[];
+};
+
+export type OrderDetail = {
+  id: string;
+  name: string;
+  division: string | null;
+  status: string;
+  order_notes: string | null;
+  created_at: string;
+  updated_at: string;
+  submitted_at: string | null;
+  items: OrderLine[];
+  payment: PaymentAnalysis;
+  recommendations: OrderRecommendation[];
+};
+
+export const ordersApi = {
+  list: (params: { status?: string; division?: string } = {}) =>
+    api<OrderSummary[]>(`/api/v1/orders${_qs(params)}`),
+  create: (body: { name: string; division?: string; order_notes?: string }) =>
+    api<OrderSummary>("/api/v1/orders", { method: "POST", json: body }),
+  get: (id: string) => api<OrderDetail>(`/api/v1/orders/${id}`),
+  update: (id: string, body: { name?: string; division?: string; status?: string; order_notes?: string }) =>
+    api<OrderSummary>(`/api/v1/orders/${id}`, { method: "PATCH", json: body }),
+  remove: (id: string) => api<void>(`/api/v1/orders/${id}`, { method: "DELETE" }),
+  addItem: (id: string, body: { code: string; qty_cases?: number; qty_bottles?: number; selected_rip_tier?: string; notes?: string }) =>
+    api<{ status: string }>(`/api/v1/orders/${id}/items`, { method: "POST", json: body }),
+  updateItem: (id: string, code: string, body: { qty_cases?: number; qty_bottles?: number; selected_rip_tier?: string; notes?: string }) =>
+    api<{ status: string }>(`/api/v1/orders/${id}/items/${code}`, { method: "PATCH", json: body }),
+  removeItem: (id: string, code: string) =>
+    api<void>(`/api/v1/orders/${id}/items/${code}`, { method: "DELETE" }),
+  copyFromWatchlist: (id: string) =>
+    api<{ added: number }>(`/api/v1/orders/${id}/copy-from-watchlist`, { method: "POST" }),
+  submit: (id: string) =>
+    api<{ status: string }>(`/api/v1/orders/${id}/submit`, { method: "POST" }),
+  exportUrl: (id: string, format = "xlsx", division?: string) =>
+    `${API_BASE}/api/v1/orders/${id}/export${_qs({ format, division })}`,
+};
