@@ -137,24 +137,23 @@ def parse_pack(s):
 # e.g. "OLD GRAND-DAD ( L GS FB IV )" -> "L GS FB IV"
 _TERRITORY_PAREN_RE = re.compile(r"\(([^)]+)\)")
 
+# Known valid NJ Allied sales division codes.
+_VALID_DIVISIONS = {"L", "S", "D", "GS", "FB", "JD", "IV"}
+
 
 def extract_divisions(text):
     """Extract division codes from parenthesized block.
 
-    Real NJ Allied division codes are 1-2 uppercase letters
-    (L, S, D, GS, FB, JD, IV, etc.). A valid block has at
-    least 2 such codes, e.g. ``( L GS FB IV )``.
+    Only whitelisted NJ Allied division codes are accepted.
+    A valid block has at least 2 such codes, e.g. ``( L GS FB IV )``.
     """
     m = _TERRITORY_PAREN_RE.search(text)
     if not m:
         return None
-    codes = m.group(1).strip()
-    tokens = codes.split()
-    if (
-        len(tokens) >= 2
-        and all(re.match(r"^[A-Z]{1,2}$", t) for t in tokens)
-    ):
-        return " ".join(tokens)
+    tokens = m.group(1).strip().split()
+    valid = [t for t in tokens if t in _VALID_DIVISIONS]
+    if len(valid) >= 2:
+        return " ".join(valid)
     return None
 
 
