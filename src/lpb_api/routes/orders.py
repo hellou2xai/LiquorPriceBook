@@ -19,12 +19,12 @@ and payment analysis.
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 from decimal import Decimal
 from io import BytesIO
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import and_, asc, desc, func, select
@@ -33,13 +33,11 @@ from sqlalchemy.orm import Session
 from lpb_core.db import get_session
 from lpb_core.db.models import (
     AuditLog,
-    BookEdition,
     Brand,
     Category,
     Distributor,
     InventoryReduction,
     PartialsPricing,
-    PartialsRip,
     Product,
     ProductEdition,
     RipOffer,
@@ -169,7 +167,10 @@ class OrderDetailOut(BaseModel):
 
 # ── Helpers ──────────────────────────────────────────────────────────────
 
-def _audit(session, *, tenant_id, user_id, entity_table, entity_id, action, before=None, after=None):
+def _audit(
+    session, *, tenant_id, user_id, entity_table,
+    entity_id, action, before=None, after=None,
+):
     session.add(AuditLog(
         tenant_id=tenant_id, user_id=user_id,
         entity_table=entity_table, entity_id=entity_id,
@@ -271,7 +272,11 @@ def create_order(
     session: Session = Depends(get_session),
 ):
     if body.division and body.division not in VALID_DIVISIONS:
-        raise HTTPException(status_code=400, detail=f"Invalid division. Valid: {', '.join(sorted(VALID_DIVISIONS))}")
+        valid = ", ".join(sorted(VALID_DIVISIONS))
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid division. Valid: {valid}",
+        )
 
     order = Watchlist(
         tenant_id=user["tenant_id"],
@@ -305,7 +310,7 @@ def update_order(
     order = _get_order(session, order_id, user["tenant_id"])
 
     if body.division is not None and body.division != "" and body.division not in VALID_DIVISIONS:
-        raise HTTPException(status_code=400, detail=f"Invalid division")
+        raise HTTPException(status_code=400, detail="Invalid division")
 
     before = {"name": order.name, "division": order.division, "status": order.status}
     if body.name is not None:
@@ -624,7 +629,9 @@ def get_order_detail(
     lines: list[OrderLineOut] = []
     invoice_total = Decimal("0")
     rebate_total = Decimal("0")
-    cat_breakdown: dict[str, dict] = defaultdict(lambda: {"invoice": Decimal("0"), "rebate": Decimal("0"), "count": 0})
+    def _empty_cat():
+        return {"invoice": Decimal("0"), "rebate": Decimal("0"), "count": 0}
+    cat_breakdown: dict[str, dict] = defaultdict(_empty_cat)
 
     for r in rows:
         wi = r[0]  # WatchlistItem
@@ -679,9 +686,13 @@ def get_order_detail(
             for pp in upcoming_partials[r.product_code]:
                 if pp.best_case_price and r.case_cost and pp.best_case_price < r.case_cost:
                     savings = r.case_cost - pp.best_case_price
+                    msg = (
+                        f"Better price starting {pp.start_date}"
+                        f": save {_money(savings)}/case"
+                    )
                     recs.append(RecommendationOut(
                         type="defer", priority="warning",
-                        message=f"Better price starting {pp.start_date}: save {_money(savings)}/case",
+                        message=msg,
                     ))
 
         # RIP tier optimizer
@@ -689,11 +700,22 @@ def get_order_detail(
             for rip in rips:
                 if wi.qty_cases < rip.tier_cases:
                     needed = rip.tier_cases - wi.qty_cases
-                    extra_save = rip.save_amount - (best_rip.save_amount if best_rip and wi.qty_cases >= best_rip.tier_cases else Decimal("0"))
+                    cur_save = (
+                        best_rip.save_amount
+                        if best_rip and wi.qty_cases >= best_rip.tier_cases
+                        else Decimal("0")
+                    )
+                    extra_save = rip.save_amount - cur_save
                     if extra_save > 0:
+                        pl = "s" if needed > 1 else ""
+                        msg = (
+                            f"Add {needed} more case{pl} to reach"
+                            f" {rip.tier} tier, save"
+                            f" {_money(extra_save)} more/case"
+                        )
                         recs.append(RecommendationOut(
                             type="rip_optimizer", priority="info",
-                            message=f"Add {needed} more case{'s' if needed > 1 else ''} to reach {rip.tier} tier, save {_money(extra_save)} more/case",
+                            message=msg,
                         ))
                     break  # only show next tier suggestion
 
@@ -744,15 +766,20 @@ def get_order_detail(
     order_recs: list[RecommendationOut] = []
     closeout_count = sum(1 for line in lines if line.is_closeout)
     if closeout_count > 0:
+        pl = "s" if closeout_count > 1 else ""
         order_recs.append(RecommendationOut(
             type="closeout", priority="action",
-            message=f"{closeout_count} item{'s' if closeout_count > 1 else ''} being discontinued — order soon",
+            message=f"{closeout_count} item{pl} being discontinued",
         ))
-    defer_count = sum(1 for line in lines for r in line.recommendations if r.type == "defer")
+    defer_count = sum(
+        1 for line in lines
+        for r in line.recommendations if r.type == "defer"
+    )
     if defer_count > 0:
+        pl = "s" if defer_count > 1 else ""
         order_recs.append(RecommendationOut(
             type="defer", priority="warning",
-            message=f"{defer_count} item{'s' if defer_count > 1 else ''} may have better upcoming prices",
+            message=f"{defer_count} item{pl} may have better upcoming prices",
         ))
 
     return OrderDetailOut(
@@ -795,9 +822,11 @@ def export_order(
 
     try:
         import openpyxl
-        from openpyxl.styles import Alignment, Font, PatternFill
-    except ImportError:
-        raise HTTPException(status_code=500, detail="openpyxl not installed")
+        from openpyxl.styles import Font, PatternFill
+    except ImportError as exc:
+        raise HTTPException(
+            status_code=500, detail="openpyxl not installed",
+        ) from exc
 
     wb = openpyxl.Workbook()
     ws = wb.active
