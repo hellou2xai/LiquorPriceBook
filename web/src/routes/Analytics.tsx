@@ -1,8 +1,9 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { analyticsApi, type AnalyticsView, type AnalyticsRow, type CategoryTrendRow } from "../lib/api";
+import { analyticsApi, watchlistApi, type AnalyticsView, type AnalyticsRow, type CategoryTrendRow } from "../lib/api";
 import SortableTable, { useSort, type Column } from "../components/SortableTable";
+import FavoriteButton from "../components/FavoriteButton";
 
 type ViewCard = {
   view: AnalyticsView;
@@ -85,125 +86,138 @@ const VIEWS: ViewCard[] = [
   },
 ];
 
-const productColumns: Column<AnalyticsRow>[] = [
-  {
-    key: "code",
-    label: "Code",
-    sortable: true,
-    render: (r) => (
-      <Link to={`/catalog/${r.code}`} className="text-blue-600 hover:underline font-mono text-xs">
-        {r.code}
-      </Link>
-    ),
-    sortValue: (r) => r.code,
-  },
-  {
-    key: "description",
-    label: "Product",
-    sortable: true,
-    render: (r) => (
-      <span className="text-sm">{r.description ?? "—"}</span>
-    ),
-    sortValue: (r) => r.description ?? "",
-  },
-  {
-    key: "brand",
-    label: "Brand",
-    sortable: true,
-    hideBelow: "lg",
-    render: (r) => <span className="text-xs text-zinc-500">{r.brand ?? "—"}</span>,
-    sortValue: (r) => r.brand ?? "",
-  },
-  {
-    key: "category",
-    label: "Category",
-    sortable: true,
-    hideBelow: "md",
-    render: (r) => <span className="text-xs text-zinc-500">{r.category ?? "—"}</span>,
-    sortValue: (r) => r.category ?? "",
-  },
-  {
-    key: "size",
-    label: "Size",
-    sortable: false,
-    hideBelow: "sm",
-    render: (r) => <span className="text-xs">{r.size ?? "—"}</span>,
-  },
-  {
-    key: "case_cost",
-    label: "Case $",
-    sortable: true,
-    align: "right",
-    render: (r) => <span className="font-mono text-sm">{r.case_cost ? `$${r.case_cost}` : "—"}</span>,
-    sortValue: (r) => (r.case_cost ? parseFloat(r.case_cost) : 0),
-  },
-  {
-    key: "prev_case_cost",
-    label: "Prev $",
-    sortable: true,
-    align: "right",
-    hideBelow: "md",
-    render: (r) =>
-      r.prev_case_cost ? (
-        <span className="font-mono text-xs text-zinc-400">${r.prev_case_cost}</span>
-      ) : (
-        <span className="text-zinc-300">—</span>
+function makeProductColumns(
+  favCodes: Set<string>,
+  favNotes: Map<string, string>,
+): Column<AnalyticsRow>[] {
+  return [
+    {
+      key: "fav",
+      label: "",
+      thClassName: "w-8",
+      render: (r) => (
+        <FavoriteButton code={r.code} isFavorite={favCodes.has(r.code)} note={favNotes.get(r.code)} showNote />
       ),
-    sortValue: (r) => (r.prev_case_cost ? parseFloat(r.prev_case_cost) : 0),
-  },
-  {
-    key: "pct_change",
-    label: "Change",
-    sortable: true,
-    align: "right",
-    render: (r) => {
-      if (r.pct_change == null) return <span className="text-zinc-300">—</span>;
-      const color = r.pct_change < 0 ? "text-emerald-600" : r.pct_change > 0 ? "text-red-600" : "text-zinc-500";
-      return <span className={`text-xs font-medium ${color}`}>{r.pct_change > 0 ? "+" : ""}{r.pct_change}%</span>;
     },
-    sortValue: (r) => r.pct_change ?? 0,
-  },
-  {
-    key: "rip_save",
-    label: "RIP Save",
-    sortable: true,
-    align: "right",
-    hideBelow: "sm",
-    render: (r) =>
-      r.rip_save ? (
-        <span className="text-xs text-emerald-600 font-medium">-${r.rip_save}</span>
-      ) : (
-        <span className="text-zinc-300">—</span>
+    {
+      key: "code",
+      label: "Code",
+      sortable: true,
+      render: (r) => (
+        <Link to={`/catalog/${r.code}`} className="text-blue-600 hover:underline font-mono text-xs">
+          {r.code}
+        </Link>
       ),
-    sortValue: (r) => (r.rip_save ? parseFloat(r.rip_save) : 0),
-  },
-  {
-    key: "effective_cost",
-    label: "Effective",
-    sortable: true,
-    align: "right",
-    hideBelow: "sm",
-    render: (r) =>
-      r.effective_cost ? (
-        <span className="font-mono text-xs text-emerald-700">${r.effective_cost}</span>
-      ) : (
-        <span className="text-zinc-300">—</span>
+      sortValue: (r) => r.code,
+    },
+    {
+      key: "description",
+      label: "Product",
+      sortable: true,
+      render: (r) => (
+        <span className="text-sm">{r.description ?? "—"}</span>
       ),
-    sortValue: (r) => (r.effective_cost ? parseFloat(r.effective_cost) : 0),
-  },
-  {
-    key: "tag",
-    label: "Tag",
-    sortable: false,
-    hideBelow: "lg",
-    render: (r) =>
-      r.tag ? (
-        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-zinc-100 text-zinc-600">
-          {r.tag}
-        </span>
-      ) : null,
-  },
-];
+      sortValue: (r) => r.description ?? "",
+    },
+    {
+      key: "brand",
+      label: "Brand",
+      sortable: true,
+      hideBelow: "lg",
+      render: (r) => <span className="text-xs text-zinc-500">{r.brand ?? "—"}</span>,
+      sortValue: (r) => r.brand ?? "",
+    },
+    {
+      key: "category",
+      label: "Category",
+      sortable: true,
+      hideBelow: "md",
+      render: (r) => <span className="text-xs text-zinc-500">{r.category ?? "—"}</span>,
+      sortValue: (r) => r.category ?? "",
+    },
+    {
+      key: "size",
+      label: "Size",
+      sortable: false,
+      hideBelow: "sm",
+      render: (r) => <span className="text-xs">{r.size ?? "—"}</span>,
+    },
+    {
+      key: "case_cost",
+      label: "Case $",
+      sortable: true,
+      align: "right",
+      render: (r) => <span className="font-mono text-sm">{r.case_cost ? `$${r.case_cost}` : "—"}</span>,
+      sortValue: (r) => (r.case_cost ? parseFloat(r.case_cost) : 0),
+    },
+    {
+      key: "prev_case_cost",
+      label: "Prev $",
+      sortable: true,
+      align: "right",
+      hideBelow: "md",
+      render: (r) =>
+        r.prev_case_cost ? (
+          <span className="font-mono text-xs text-zinc-400">${r.prev_case_cost}</span>
+        ) : (
+          <span className="text-zinc-300">—</span>
+        ),
+      sortValue: (r) => (r.prev_case_cost ? parseFloat(r.prev_case_cost) : 0),
+    },
+    {
+      key: "pct_change",
+      label: "Change",
+      sortable: true,
+      align: "right",
+      render: (r) => {
+        if (r.pct_change == null) return <span className="text-zinc-300">—</span>;
+        const color = r.pct_change < 0 ? "text-emerald-600" : r.pct_change > 0 ? "text-red-600" : "text-zinc-500";
+        return <span className={`text-xs font-medium ${color}`}>{r.pct_change > 0 ? "+" : ""}{r.pct_change}%</span>;
+      },
+      sortValue: (r) => r.pct_change ?? 0,
+    },
+    {
+      key: "rip_save",
+      label: "RIP Save",
+      sortable: true,
+      align: "right",
+      hideBelow: "sm",
+      render: (r) =>
+        r.rip_save ? (
+          <span className="text-xs text-emerald-600 font-medium">-${r.rip_save}</span>
+        ) : (
+          <span className="text-zinc-300">—</span>
+        ),
+      sortValue: (r) => (r.rip_save ? parseFloat(r.rip_save) : 0),
+    },
+    {
+      key: "effective_cost",
+      label: "Effective",
+      sortable: true,
+      align: "right",
+      hideBelow: "sm",
+      render: (r) =>
+        r.effective_cost ? (
+          <span className="font-mono text-xs text-emerald-700">${r.effective_cost}</span>
+        ) : (
+          <span className="text-zinc-300">—</span>
+        ),
+      sortValue: (r) => (r.effective_cost ? parseFloat(r.effective_cost) : 0),
+    },
+    {
+      key: "tag",
+      label: "Tag",
+      sortable: false,
+      hideBelow: "lg",
+      render: (r) =>
+        r.tag ? (
+          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-zinc-100 text-zinc-600">
+            {r.tag}
+          </span>
+        ) : null,
+    },
+  ];
+}
 
 const categoryColumns: Column<CategoryTrendRow>[] = [
   {
@@ -296,6 +310,20 @@ export default function Analytics() {
   const [brandFilter, setBrandFilter] = useState("");
   const [divisionFilter, setDivisionFilter] = useState("");
   const [minPct, setMinPct] = useState(0);
+
+  // Watchlist for favorite state
+  const wlQ = useQuery({ queryKey: ["watchlist"], queryFn: () => watchlistApi.list() });
+  const favCodes = useMemo(() => new Set((wlQ.data ?? []).map((w) => w.product_code)), [wlQ.data]);
+  const favNotes = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const w of wlQ.data ?? []) if (w.notes) m.set(w.product_code, w.notes);
+    return m;
+  }, [wlQ.data]);
+
+  const productColumns = useMemo(
+    () => makeProductColumns(favCodes, favNotes),
+    [favCodes, favNotes],
+  );
 
   const { data, isLoading, error } = useQuery({
     queryKey: ["analytics", activeView],
