@@ -229,6 +229,60 @@ class TestOrdersWorkflow:
 
 
 # ---------------------------------------------------------------------------
+# Orders -- Hide / Unhide / Delete
+# ---------------------------------------------------------------------------
+
+class TestOrderHideUnhide:
+    """Tests the hide/unhide/delete workflow for orders."""
+
+    @pytest.fixture(autouse=True)
+    def _setup_order(self, api):
+        self.api = api
+        order = api.post("/api/v1/orders", {
+            "name": "Hide Test Order",
+            "order_notes": "Automated test -- safe to delete",
+        })
+        self.order_id = order["id"]
+        yield
+        try:
+            api.delete(f"/api/v1/orders/{self.order_id}")
+        except Exception:
+            pass
+
+    def test_hide_order(self):
+        result = self.api.post(f"/api/v1/orders/{self.order_id}/hide")
+        assert result["hidden_at"] is not None, "hidden_at should be set"
+
+    def test_hidden_order_excluded_from_list(self):
+        self.api.post(f"/api/v1/orders/{self.order_id}/hide")
+        orders = self.api.get("/api/v1/orders")
+        ids = [o["id"] for o in orders]
+        assert self.order_id not in ids, "Hidden order should not appear in default list"
+
+    def test_hidden_order_included_with_flag(self):
+        self.api.post(f"/api/v1/orders/{self.order_id}/hide")
+        orders = self.api.get("/api/v1/orders?include_hidden=true")
+        ids = [o["id"] for o in orders]
+        assert self.order_id in ids, "Hidden order should appear when include_hidden=true"
+
+    def test_unhide_order(self):
+        self.api.post(f"/api/v1/orders/{self.order_id}/hide")
+        result = self.api.post(f"/api/v1/orders/{self.order_id}/unhide")
+        assert result["hidden_at"] is None, "hidden_at should be cleared"
+        orders = self.api.get("/api/v1/orders")
+        ids = [o["id"] for o in orders]
+        assert self.order_id in ids, "Unhidden order should appear in default list"
+
+    def test_delete_submitted_order(self):
+        """Verify that non-draft orders can also be deleted."""
+        self.api.post(f"/api/v1/orders/{self.order_id}/submit")
+        self.api.delete(f"/api/v1/orders/{self.order_id}")
+        orders = self.api.get("/api/v1/orders?include_hidden=true")
+        ids = [o["id"] for o in orders]
+        assert self.order_id not in ids, "Deleted order should be gone"
+
+
+# ---------------------------------------------------------------------------
 # Orders -- List-level totals
 # ---------------------------------------------------------------------------
 

@@ -527,6 +527,7 @@ export type OrderSummary = {
   created_at: string;
   updated_at: string;
   submitted_at: string | null;
+  hidden_at: string | null;
 };
 
 export type OrderRipTier = {
@@ -600,7 +601,7 @@ export type OrderDetail = {
 };
 
 export const ordersApi = {
-  list: (params: { status?: string; division?: string } = {}) =>
+  list: (params: { status?: string; division?: string; include_hidden?: boolean } = {}) =>
     api<OrderSummary[]>(`/api/v1/orders${_qs(params)}`),
   create: (body: { name: string; division?: string; order_notes?: string }) =>
     api<OrderSummary>("/api/v1/orders", { method: "POST", json: body }),
@@ -618,6 +619,10 @@ export const ordersApi = {
     api<{ added: number }>(`/api/v1/orders/${id}/copy-from-watchlist`, { method: "POST" }),
   submit: (id: string) =>
     api<{ status: string }>(`/api/v1/orders/${id}/submit`, { method: "POST" }),
+  hide: (id: string) =>
+    api<OrderSummary>(`/api/v1/orders/${id}/hide`, { method: "POST" }),
+  unhide: (id: string) =>
+    api<OrderSummary>(`/api/v1/orders/${id}/unhide`, { method: "POST" }),
   exportUrl: (id: string, format = "xlsx", division?: string) =>
     `${API_BASE}/api/v1/orders/${id}/export${_qs({ format, division })}`,
 };

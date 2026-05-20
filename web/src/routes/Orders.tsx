@@ -27,101 +27,6 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-const columns: Column<OrderSummary>[] = [
-  {
-    key: "name",
-    label: "Name",
-    sortable: true,
-    render: (o) => (
-      <Link to={`/orders/${o.id}`} className="font-medium text-zinc-900 hover:underline" onClick={(e) => e.stopPropagation()}>
-        {o.name}
-      </Link>
-    ),
-    sortValue: (o) => o.name.toLowerCase(),
-  },
-  {
-    key: "division",
-    label: "Div",
-    sortable: true,
-    hideBelow: "sm",
-    render: (o) => (
-      <span className="font-mono text-xs text-zinc-600">{o.division ?? "\u2014"}</span>
-    ),
-    sortValue: (o) => o.division ?? "",
-  },
-  {
-    key: "status",
-    label: "Status",
-    sortable: true,
-    render: (o) => <StatusBadge status={o.status} />,
-    sortValue: (o) => o.status,
-  },
-  {
-    key: "items",
-    label: "Items",
-    sortable: true,
-    align: "right",
-    hideBelow: "sm",
-    render: (o) => <span className="tabular-nums">{o.item_count}</span>,
-    sortValue: (o) => o.item_count,
-  },
-  {
-    key: "cases",
-    label: "Cases",
-    sortable: true,
-    align: "right",
-    hideBelow: "sm",
-    render: (o) => <span className="tabular-nums">{o.total_cases}</span>,
-    sortValue: (o) => o.total_cases,
-  },
-  {
-    key: "invoice_total",
-    label: "Invoice",
-    sortable: true,
-    align: "right",
-    hideBelow: "md",
-    render: (o) => <span className="tabular-nums">{money(o.invoice_total)}</span>,
-    sortValue: (o) => (o.invoice_total ? parseFloat(o.invoice_total) : null),
-  },
-  {
-    key: "rip_rebate",
-    label: "RIP Rebate",
-    sortable: true,
-    align: "right",
-    hideBelow: "md",
-    render: (o) => (
-      <span className="tabular-nums text-emerald-700">{money(o.rip_rebate_total)}</span>
-    ),
-    sortValue: (o) => (o.rip_rebate_total ? parseFloat(o.rip_rebate_total) : null),
-  },
-  {
-    key: "effective",
-    label: "Effective",
-    sortable: true,
-    align: "right",
-    render: (o) => (
-      <span className="tabular-nums font-medium">{money(o.effective_total)}</span>
-    ),
-    sortValue: (o) => (o.effective_total ? parseFloat(o.effective_total) : null),
-  },
-  {
-    key: "updated_at",
-    label: "Updated",
-    sortable: true,
-    hideBelow: "lg",
-    render: (o) => (
-      <span className="text-xs text-zinc-500">
-        {new Date(o.updated_at).toLocaleDateString("en-US", {
-          month: "short",
-          day: "numeric",
-          year: "numeric",
-        })}
-      </span>
-    ),
-    sortValue: (o) => new Date(o.updated_at).getTime(),
-  },
-];
-
 export default function Orders() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -129,6 +34,8 @@ export default function Orders() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [divisionFilter, setDivisionFilter] = useState<DivisionFilter>("all");
   const [showCreate, setShowCreate] = useState(false);
+  const [showHidden, setShowHidden] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
   // Create form state
   const [newName, setNewName] = useState("");
@@ -138,11 +45,12 @@ export default function Orders() {
   const { sort, toggle, sorted } = useSort<OrderSummary>({ key: "updated_at", direction: "desc" });
 
   const ordersQ = useQuery({
-    queryKey: ["orders", { status: statusFilter === "all" ? undefined : statusFilter, division: divisionFilter === "all" ? undefined : divisionFilter }],
+    queryKey: ["orders", { status: statusFilter === "all" ? undefined : statusFilter, division: divisionFilter === "all" ? undefined : divisionFilter, include_hidden: showHidden || undefined }],
     queryFn: () =>
       ordersApi.list({
         status: statusFilter === "all" ? undefined : statusFilter,
         division: divisionFilter === "all" ? undefined : divisionFilter,
+        include_hidden: showHidden || undefined,
       }),
   });
 
@@ -159,10 +67,185 @@ export default function Orders() {
     },
   });
 
+  const hideMut = useMutation({
+    mutationFn: (id: string) => ordersApi.hide(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["orders"] }),
+  });
+
+  const unhideMut = useMutation({
+    mutationFn: (id: string) => ordersApi.unhide(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["orders"] }),
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: (id: string) => ordersApi.remove(id),
+    onSuccess: () => {
+      setConfirmDelete(null);
+      queryClient.invalidateQueries({ queryKey: ["orders"] });
+    },
+  });
+
+  const columns: Column<OrderSummary>[] = useMemo(() => [
+    {
+      key: "name",
+      label: "Name",
+      sortable: true,
+      render: (o: OrderSummary) => (
+        <div className="flex items-center gap-2">
+          <Link to={`/orders/${o.id}`} className="font-medium text-zinc-900 hover:underline" onClick={(e) => e.stopPropagation()}>
+            {o.name}
+          </Link>
+          {o.hidden_at && (
+            <span className="inline-flex items-center rounded-full bg-zinc-100 border border-zinc-200 px-1.5 py-0.5 text-[10px] text-zinc-500">hidden</span>
+          )}
+        </div>
+      ),
+      sortValue: (o: OrderSummary) => o.name.toLowerCase(),
+    },
+    {
+      key: "division",
+      label: "Div",
+      sortable: true,
+      hideBelow: "sm" as const,
+      render: (o: OrderSummary) => (
+        <span className="font-mono text-xs text-zinc-600">{o.division ?? "\u2014"}</span>
+      ),
+      sortValue: (o: OrderSummary) => o.division ?? "",
+    },
+    {
+      key: "status",
+      label: "Status",
+      sortable: true,
+      render: (o: OrderSummary) => <StatusBadge status={o.status} />,
+      sortValue: (o: OrderSummary) => o.status,
+    },
+    {
+      key: "items",
+      label: "Items",
+      sortable: true,
+      align: "right" as const,
+      hideBelow: "sm" as const,
+      render: (o: OrderSummary) => <span className="tabular-nums">{o.item_count}</span>,
+      sortValue: (o: OrderSummary) => o.item_count,
+    },
+    {
+      key: "cases",
+      label: "Cases",
+      sortable: true,
+      align: "right" as const,
+      hideBelow: "sm" as const,
+      render: (o: OrderSummary) => <span className="tabular-nums">{o.total_cases}</span>,
+      sortValue: (o: OrderSummary) => o.total_cases,
+    },
+    {
+      key: "invoice_total",
+      label: "Invoice",
+      sortable: true,
+      align: "right" as const,
+      hideBelow: "md" as const,
+      render: (o: OrderSummary) => <span className="tabular-nums">{money(o.invoice_total)}</span>,
+      sortValue: (o: OrderSummary) => (o.invoice_total ? parseFloat(o.invoice_total) : null),
+    },
+    {
+      key: "rip_rebate",
+      label: "RIP Rebate",
+      sortable: true,
+      align: "right" as const,
+      hideBelow: "md" as const,
+      render: (o: OrderSummary) => (
+        <span className="tabular-nums text-emerald-700">{money(o.rip_rebate_total)}</span>
+      ),
+      sortValue: (o: OrderSummary) => (o.rip_rebate_total ? parseFloat(o.rip_rebate_total) : null),
+    },
+    {
+      key: "effective",
+      label: "Effective",
+      sortable: true,
+      align: "right" as const,
+      render: (o: OrderSummary) => (
+        <span className="tabular-nums font-medium">{money(o.effective_total)}</span>
+      ),
+      sortValue: (o: OrderSummary) => (o.effective_total ? parseFloat(o.effective_total) : null),
+    },
+    {
+      key: "updated_at",
+      label: "Updated",
+      sortable: true,
+      hideBelow: "lg" as const,
+      render: (o: OrderSummary) => (
+        <span className="text-xs text-zinc-500">
+          {new Date(o.updated_at).toLocaleDateString("en-US", {
+            month: "short",
+            day: "numeric",
+            year: "numeric",
+          })}
+        </span>
+      ),
+      sortValue: (o: OrderSummary) => new Date(o.updated_at).getTime(),
+    },
+    {
+      key: "actions",
+      label: "",
+      render: (o: OrderSummary) => (
+        <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+          {o.hidden_at ? (
+            <button
+              onClick={() => unhideMut.mutate(o.id)}
+              disabled={unhideMut.isPending}
+              className="rounded border border-zinc-300 bg-white px-2 py-0.5 text-[10px] text-zinc-600 hover:bg-zinc-50 disabled:opacity-50"
+              title="Unhide this order"
+            >
+              Unhide
+            </button>
+          ) : (
+            <button
+              onClick={() => hideMut.mutate(o.id)}
+              disabled={hideMut.isPending}
+              className="rounded border border-zinc-300 bg-white px-2 py-0.5 text-[10px] text-zinc-600 hover:bg-zinc-50 disabled:opacity-50"
+              title="Hide this order from the list"
+            >
+              Hide
+            </button>
+          )}
+          {confirmDelete === o.id ? (
+            <span className="flex items-center gap-1">
+              <button
+                onClick={() => deleteMut.mutate(o.id)}
+                disabled={deleteMut.isPending}
+                className="rounded bg-red-600 px-2 py-0.5 text-[10px] text-white hover:bg-red-700 disabled:opacity-50"
+              >
+                {deleteMut.isPending ? "..." : "Confirm"}
+              </button>
+              <button
+                onClick={() => setConfirmDelete(null)}
+                className="rounded border border-zinc-300 bg-white px-2 py-0.5 text-[10px] text-zinc-600 hover:bg-zinc-50"
+              >
+                Cancel
+              </button>
+            </span>
+          ) : (
+            <button
+              onClick={() => setConfirmDelete(o.id)}
+              className="rounded border border-red-200 bg-white px-2 py-0.5 text-[10px] text-red-600 hover:bg-red-50"
+              title="Permanently delete this order"
+            >
+              Delete
+            </button>
+          )}
+        </div>
+      ),
+    },
+  ], [confirmDelete, hideMut, unhideMut, deleteMut]);
+
   const rows = useMemo(() => {
     const data = ordersQ.data ?? [];
     return sorted(data, columns);
-  }, [ordersQ.data, sorted]);
+  }, [ordersQ.data, sorted, columns]);
+
+  const hiddenCount = useMemo(() => {
+    if (!showHidden || !ordersQ.data) return 0;
+    return ordersQ.data.filter((o) => o.hidden_at).length;
+  }, [ordersQ.data, showHidden]);
 
   function handleCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -286,6 +369,22 @@ export default function Orders() {
               {d === "all" ? "All" : d}
             </button>
           ))}
+        </div>
+
+        {/* Show hidden toggle */}
+        <div className="flex items-center gap-2">
+          <label className="flex items-center gap-1.5 text-sm text-zinc-600 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={showHidden}
+              onChange={(e) => setShowHidden(e.target.checked)}
+              className="rounded border-zinc-300 h-3.5 w-3.5"
+            />
+            Show hidden orders
+          </label>
+          {showHidden && hiddenCount > 0 && (
+            <span className="text-xs text-zinc-400">({hiddenCount} hidden)</span>
+          )}
         </div>
       </div>
 

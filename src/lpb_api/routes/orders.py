@@ -96,6 +96,7 @@ class OrderSummaryOut(BaseModel):
     created_at: str
     updated_at: str
     submitted_at: str | None = None
+    hidden_at: str | None = None
 
 class RipTierOut(BaseModel):
     tier: str
@@ -208,6 +209,7 @@ def _money(v) -> str | None:
 def list_orders(
     status_filter: str | None = Query(None, alias="status"),
     division: str | None = Query(None),
+    include_hidden: bool = Query(False),
     user: dict = Depends(get_current_user),
     session: Session = Depends(get_session),
 ):
@@ -219,6 +221,8 @@ def list_orders(
         )
         .order_by(desc(Watchlist.updated_at))
     )
+    if not include_hidden:
+        stmt = stmt.where(Watchlist.hidden_at == None)  # noqa: E711
     if status_filter:
         stmt = stmt.where(Watchlist.status == status_filter)
     if division:
@@ -320,6 +324,7 @@ def list_orders(
             created_at=o.created_at.isoformat(),
             updated_at=o.updated_at.isoformat(),
             submitted_at=o.submitted_at.isoformat() if o.submitted_at else None,
+            hidden_at=o.hidden_at.isoformat() if o.hidden_at else None,
         ))
     return results
 
@@ -410,12 +415,70 @@ def delete_order(
     session: Session = Depends(get_session),
 ):
     order = _get_order(session, order_id, user["tenant_id"])
-    if order.status not in ("draft",):
-        raise HTTPException(status_code=400, detail="Only draft orders can be deleted")
     _audit(session, tenant_id=user["tenant_id"], user_id=user["user_id"],
            entity_table="watchlists", entity_id=order.id, action="delete")
     session.delete(order)
     session.commit()
+
+
+@router.post("/api/v1/orders/{order_id}/hide", response_model=OrderSummaryOut)
+def hide_order(
+    order_id: UUID,
+    user: dict = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    order = _get_order(session, order_id, user["tenant_id"])
+    order.hidden_at = datetime.now(UTC)
+    _audit(session, tenant_id=user["tenant_id"], user_id=user["user_id"],
+           entity_table="watchlists", entity_id=order.id, action="update",
+           after={"hidden_at": order.hidden_at.isoformat()})
+    session.commit()
+    cnt_row = session.execute(
+        select(
+            func.count().label("cnt"),
+            func.coalesce(func.sum(WatchlistItem.qty_cases), 0),
+            func.coalesce(func.sum(WatchlistItem.qty_bottles), 0),
+        ).where(WatchlistItem.watchlist_id == order.id)
+    ).one()
+    return OrderSummaryOut(
+        id=str(order.id), name=order.name, division=order.division,
+        status=order.status, order_notes=order.order_notes,
+        item_count=cnt_row[0], total_cases=cnt_row[1], total_bottles=cnt_row[2],
+        created_at=order.created_at.isoformat(),
+        updated_at=order.updated_at.isoformat(),
+        submitted_at=order.submitted_at.isoformat() if order.submitted_at else None,
+        hidden_at=order.hidden_at.isoformat() if order.hidden_at else None,
+    )
+
+
+@router.post("/api/v1/orders/{order_id}/unhide", response_model=OrderSummaryOut)
+def unhide_order(
+    order_id: UUID,
+    user: dict = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    order = _get_order(session, order_id, user["tenant_id"])
+    order.hidden_at = None
+    _audit(session, tenant_id=user["tenant_id"], user_id=user["user_id"],
+           entity_table="watchlists", entity_id=order.id, action="update",
+           after={"hidden_at": None})
+    session.commit()
+    cnt_row = session.execute(
+        select(
+            func.count().label("cnt"),
+            func.coalesce(func.sum(WatchlistItem.qty_cases), 0),
+            func.coalesce(func.sum(WatchlistItem.qty_bottles), 0),
+        ).where(WatchlistItem.watchlist_id == order.id)
+    ).one()
+    return OrderSummaryOut(
+        id=str(order.id), name=order.name, division=order.division,
+        status=order.status, order_notes=order.order_notes,
+        item_count=cnt_row[0], total_cases=cnt_row[1], total_bottles=cnt_row[2],
+        created_at=order.created_at.isoformat(),
+        updated_at=order.updated_at.isoformat(),
+        submitted_at=order.submitted_at.isoformat() if order.submitted_at else None,
+        hidden_at=order.hidden_at.isoformat() if order.hidden_at else None,
+    )
 
 
 # ── Items ────────────────────────────────────────────────────────────────
