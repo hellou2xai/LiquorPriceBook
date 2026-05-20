@@ -511,7 +511,11 @@ def watchlist_order(
                         btl_price=rr.btl_price,
                         effective_case=(
                             rr.case_price if rr.case_price is not None
-                            else (r.case_cost - rr.save_amount if r.case_cost and rr.save_amount else None)
+                            else (
+                                r.case_cost - rr.save_amount
+                                if r.case_cost and rr.save_amount
+                                else None
+                            )
                         ),
                         effective_btl=rr.btl_price if rr.btl_price is not None else r.btl_cost,
                         discount_pct=(
