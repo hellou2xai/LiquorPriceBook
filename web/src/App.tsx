@@ -18,6 +18,7 @@ import Orders from "./routes/Orders";
 import OrderDetailPage from "./routes/OrderDetail";
 import Analytics from "./routes/Analytics";
 import Settings from "./routes/Settings";
+import SalesReps from "./routes/SalesReps";
 import Login from "./routes/Login";
 
 const NAV = [
@@ -34,6 +35,7 @@ const NAV = [
 ];
 
 const BOTTOM_NAV = [
+  { to: "/sales-reps", label: "Sales Reps", icon: "M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" },
   { to: "/settings", label: "Settings", icon: "M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z M15 12a3 3 0 11-6 0 3 3 0 016 0z" },
 ];
 
@@ -58,8 +60,8 @@ function Shell({ children }: { children: React.ReactNode }) {
   const sidebarLinkClass = ({ isActive }: { isActive: boolean }) =>
     `flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
       isActive
-        ? "bg-zinc-900 text-white"
-        : "text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100"
+        ? "bg-brand-orange text-white shadow-sm"
+        : "text-zinc-300 hover:text-white hover:bg-white/10"
     }`;
 
   if (!isAuthed) {
@@ -74,28 +76,34 @@ function Shell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen">
-      {/* Overlay backdrop */}
+      {/* Overlay backdrop — mobile only */}
       {sidebarOpen && (
         <div
-          className="fixed inset-0 bg-black/30 z-40"
+          className="fixed inset-0 bg-black/40 backdrop-blur-sm z-40 lg:hidden"
           onClick={() => setSidebarOpen(false)}
         />
       )}
 
-      {/* Floating sidebar — overlays content on all screen sizes */}
+      {/* Sidebar — always visible on lg+, slide-in on mobile */}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 w-56 bg-white border-r border-zinc-200 shadow-lg flex flex-col transition-transform duration-200 ease-in-out ${
+        className={`fixed inset-y-0 left-0 z-50 w-60 bg-brand-gradient shadow-2xl flex flex-col transition-transform duration-200 ease-in-out lg:translate-x-0 ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
         {/* Logo + close */}
-        <div className="flex items-center justify-between h-14 px-4 border-b border-zinc-200 flex-shrink-0">
-          <NavLink to="/" className="font-semibold tracking-tight text-sm whitespace-nowrap">
-            CELR Price Book
+        <div className="flex items-center justify-between h-16 px-5 border-b border-white/10 flex-shrink-0">
+          <NavLink to="/" className="flex items-center gap-2">
+            <div className="h-8 w-8 rounded-lg bg-brand-gradient-warm flex items-center justify-center">
+              <span className="text-white font-bold text-sm">C</span>
+            </div>
+            <div>
+              <div className="font-semibold text-white text-sm tracking-tight">CELR</div>
+              <div className="text-[10px] text-zinc-400 -mt-0.5">Price Book</div>
+            </div>
           </NavLink>
           <button
             onClick={() => setSidebarOpen(false)}
-            className="p-1 rounded-md text-zinc-400 hover:text-zinc-600 hover:bg-zinc-100"
+            className="p-1.5 rounded-md text-zinc-400 hover:text-white hover:bg-white/10 lg:hidden"
             aria-label="Close menu"
           >
             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -105,7 +113,7 @@ function Shell({ children }: { children: React.ReactNode }) {
         </div>
 
         {/* Nav items */}
-        <nav className="flex-1 overflow-y-auto px-3 py-3 space-y-1">
+        <nav className="flex-1 overflow-y-auto sidebar-scroll px-3 py-4 space-y-1">
           {NAV.map((item) => (
             <NavLink
               key={item.to}
@@ -120,7 +128,7 @@ function Shell({ children }: { children: React.ReactNode }) {
         </nav>
 
         {/* Bottom nav (Settings) */}
-        <div className="border-t border-zinc-200 px-3 py-3 space-y-1 flex-shrink-0">
+        <div className="border-t border-white/10 px-3 py-3 space-y-1 flex-shrink-0">
           {BOTTOM_NAV.map((item) => (
             <NavLink
               key={item.to}
@@ -134,21 +142,30 @@ function Shell({ children }: { children: React.ReactNode }) {
         </div>
       </aside>
 
-      {/* Main content area — full width always */}
-      <div className="flex flex-col min-h-screen">
-        {/* Top bar with hamburger — always visible */}
-        <header className="sticky top-0 z-30 bg-white border-b border-zinc-200">
+      {/* Main content area — offset on lg for persistent sidebar */}
+      <div className="flex flex-col min-h-screen lg:pl-60">
+        {/* Top bar with hamburger (hamburger hidden on lg) */}
+        <header className="sticky top-0 z-30 bg-white border-b border-zinc-200 shadow-sm">
           <div className="flex items-center h-14 px-4 max-w-7xl mx-auto">
             <button
               onClick={() => setSidebarOpen(true)}
-              className="p-2 -ml-2 rounded-md text-zinc-600 hover:bg-zinc-100"
+              className="p-2 -ml-2 rounded-md text-brand-navy hover:bg-brand-tan lg:hidden"
               aria-label="Open menu"
             >
               <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
               </svg>
             </button>
-            <span className="ml-3 font-semibold tracking-tight text-sm">CELR Price Book</span>
+            <div className="ml-3 flex items-center gap-2 lg:hidden">
+              <div className="h-6 w-6 rounded bg-brand-gradient-warm flex items-center justify-center">
+                <span className="text-white font-bold text-[10px]">C</span>
+              </div>
+              <span className="font-semibold tracking-tight text-sm text-brand-navy">CELR Price Book</span>
+            </div>
+            <div className="ml-auto flex items-center gap-2">
+              <span className="hidden sm:inline text-xs text-zinc-500">NJ Liquor Retail</span>
+              <span className="h-2 w-2 rounded-full bg-emerald-500"></span>
+            </div>
           </div>
         </header>
 
@@ -159,8 +176,9 @@ function Shell({ children }: { children: React.ReactNode }) {
 
         {/* Footer */}
         <footer className="border-t border-zinc-200 bg-white">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 text-xs text-zinc-500">
-            CELR Liquor Price Book · for NJ liquor retailers · v0.1
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between">
+            <span className="text-xs text-zinc-500">CELR Liquor Price Book · NJ Retailers · v0.1</span>
+            <span className="text-[10px] text-zinc-400">Powered by U2xAI</span>
           </div>
         </footer>
       </div>
@@ -188,6 +206,7 @@ export default function App() {
         <Route path="/watchlist" element={protect(<Watchlist />)} />
         <Route path="/alerts" element={protect(<Alerts />)} />
         <Route path="/admin/ingest" element={protect(<AdminIngest />)} />
+        <Route path="/sales-reps" element={protect(<SalesReps />)} />
         <Route path="/settings" element={protect(<Settings />)} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

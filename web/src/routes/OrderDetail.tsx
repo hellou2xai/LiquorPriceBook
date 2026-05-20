@@ -351,7 +351,7 @@ export default function OrderDetailPage() {
           <div>
             <Link
               to={`/catalog/${item.product_code}`}
-              className="font-medium text-zinc-900 hover:underline"
+              className="font-medium text-brand-navy hover:text-brand-orange hover:underline"
             >
               {item.description ?? "Unknown"}
             </Link>
@@ -654,7 +654,7 @@ export default function OrderDetailPage() {
         <div className="flex items-center gap-3">
           <Link
             to="/orders"
-            className="flex items-center justify-center rounded-md border border-zinc-200 bg-white w-8 h-8 hover:bg-zinc-50"
+            className="flex items-center justify-center rounded-md border border-zinc-200 bg-white w-8 h-8 hover:bg-brand-tan"
             title="Back to orders"
           >
             <svg className="h-4 w-4 text-zinc-600" viewBox="0 0 16 16" fill="currentColor">
@@ -695,13 +695,13 @@ export default function OrderDetailPage() {
           <button
             onClick={() => copyFromWatchlist.mutate()}
             disabled={copyFromWatchlist.isPending}
-            className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-xs font-medium hover:bg-zinc-50 disabled:opacity-50"
+            className="rounded-md border border-zinc-300 bg-brand-tan text-brand-navy px-3 py-1.5 text-xs font-medium hover:bg-zinc-200 disabled:opacity-50"
           >
             {copyFromWatchlist.isPending ? "Copying..." : "Copy from Tracked"}
           </button>
           <button
             onClick={handleExport}
-            className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-xs font-medium hover:bg-zinc-50"
+            className="rounded-md border border-zinc-300 bg-brand-tan text-brand-navy px-3 py-1.5 text-xs font-medium hover:bg-zinc-200"
           >
             Export Excel
           </button>
@@ -709,7 +709,7 @@ export default function OrderDetailPage() {
           <div className="relative">
             <button
               onClick={() => setEmailDropdownOpen(!emailDropdownOpen)}
-              className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-xs font-medium hover:bg-zinc-50 flex items-center gap-1"
+              className="rounded-md border border-zinc-300 bg-brand-tan text-brand-navy px-3 py-1.5 text-xs font-medium hover:bg-zinc-200 flex items-center gap-1"
             >
               Email Rep
               <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -724,7 +724,7 @@ export default function OrderDetailPage() {
                       <button
                         key={rep.id}
                         onClick={() => handleEmailRep(rep)}
-                        className="w-full text-left px-3 py-2 text-sm hover:bg-zinc-50 flex items-center justify-between"
+                        className="w-full text-left px-3 py-2 text-sm hover:bg-brand-tan flex items-center justify-between"
                       >
                         <span>
                           {rep.name}
@@ -742,7 +742,7 @@ export default function OrderDetailPage() {
                     <div className="border-t border-zinc-100 mt-1 pt-1">
                       <button
                         onClick={() => handleEmailRep()}
-                        className="w-full text-left px-3 py-2 text-sm text-zinc-500 hover:bg-zinc-50"
+                        className="w-full text-left px-3 py-2 text-sm text-zinc-500 hover:bg-brand-tan"
                       >
                         Custom email...
                       </button>
@@ -752,13 +752,13 @@ export default function OrderDetailPage() {
                   <>
                     <button
                       onClick={() => handleEmailRep()}
-                      className="w-full text-left px-3 py-2 text-sm hover:bg-zinc-50"
+                      className="w-full text-left px-3 py-2 text-sm hover:bg-brand-tan"
                     >
                       Compose email...
                     </button>
                     <div className="px-3 py-2 text-xs text-zinc-400">
                       Add sales reps in{" "}
-                      <Link to="/settings" className="underline hover:text-zinc-600">
+                      <Link to="/settings" className="underline text-brand-orange hover:text-brand-orange-dark">
                         Settings
                       </Link>
                     </div>
@@ -771,7 +771,7 @@ export default function OrderDetailPage() {
             <button
               onClick={() => submitOrder.mutate()}
               disabled={submitOrder.isPending}
-              className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+              className="rounded-md bg-brand-orange px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-orange-dark disabled:opacity-50"
             >
               {submitOrder.isPending ? "Submitting..." : "Submit Order"}
             </button>
@@ -798,8 +798,8 @@ export default function OrderDetailPage() {
           onClick={() => setDivisionFilter("")}
           className={`rounded-full px-3 py-1 text-xs font-medium border transition-colors ${
             !divisionFilter
-              ? "bg-zinc-900 text-white border-zinc-900"
-              : "bg-white text-zinc-600 border-zinc-300 hover:bg-zinc-50"
+              ? "bg-brand-navy text-white border-brand-navy"
+              : "bg-white text-zinc-600 border-zinc-300 hover:bg-brand-tan"
           }`}
         >
           All
@@ -812,8 +812,8 @@ export default function OrderDetailPage() {
             }
             className={`rounded-full px-3 py-1 text-xs font-medium border transition-colors ${
               divisionFilter === div
-                ? "bg-zinc-900 text-white border-zinc-900"
-                : "bg-white text-zinc-600 border-zinc-300 hover:bg-zinc-50"
+                ? "bg-brand-navy text-white border-brand-navy"
+                : "bg-white text-zinc-600 border-zinc-300 hover:bg-brand-tan"
             }`}
           >
             {div}
@@ -865,13 +865,13 @@ export default function OrderDetailPage() {
 
         {/* By Category breakdown */}
         {payment.by_category.length > 0 && (
-          <div className="rounded-lg border border-zinc-200 bg-white overflow-hidden">
-            <div className="border-b border-zinc-200 px-4 py-2 text-xs font-medium text-zinc-700 uppercase tracking-wide">
+          <div className="rounded-xl shadow-sm border border-zinc-200 bg-white overflow-hidden">
+            <div className="border-b border-zinc-200 px-4 py-2 text-xs font-medium text-brand-navy uppercase tracking-wide">
               By Category
             </div>
             <div className="overflow-x-auto">
               <table className="min-w-full text-sm divide-y divide-zinc-100">
-                <thead className="bg-zinc-50/80 text-[10px] uppercase tracking-wide text-zinc-500">
+                <thead className="bg-brand-tan text-[10px] uppercase tracking-wide text-brand-navy">
                   <tr>
                     <th className="px-3 py-2 text-left font-medium">Category</th>
                     <th className="px-3 py-2 text-right font-medium hidden sm:table-cell">Items</th>
@@ -882,7 +882,7 @@ export default function OrderDetailPage() {
                 </thead>
                 <tbody className="divide-y divide-zinc-100">
                   {payment.by_category.map((cat) => (
-                    <tr key={cat.category} className="hover:bg-zinc-50">
+                    <tr key={cat.category} className="hover:bg-brand-tan">
                       <td className="px-3 py-2 text-zinc-700">{cat.category}</td>
                       <td className="px-3 py-2 text-right tabular-nums text-zinc-600 hidden sm:table-cell">
                         {cat.item_count}
@@ -909,7 +909,7 @@ export default function OrderDetailPage() {
       <RecommendationBanners recs={order.recommendations} />
 
       {/* ── 5. Product Table ── */}
-      <section className="rounded-lg border border-zinc-200 bg-white overflow-hidden">
+      <section className="rounded-xl shadow-sm border border-zinc-200 bg-white overflow-hidden">
         <SortableTable<OrderLine>
           columns={columns}
           data={sortedItems}
@@ -923,8 +923,8 @@ export default function OrderDetailPage() {
 
       {/* ── 6. Add Product Panel ── */}
       {isDraft && (
-        <section className="rounded-lg border border-zinc-200 bg-white p-4">
-          <div className="text-xs font-medium text-zinc-700 uppercase tracking-wide mb-3">
+        <section className="rounded-xl shadow-sm border border-zinc-200 bg-white p-4">
+          <div className="text-xs font-medium text-brand-navy uppercase tracking-wide mb-3">
             Add Product
           </div>
           <form
@@ -940,12 +940,12 @@ export default function OrderDetailPage() {
               value={addCode}
               onChange={(e) => setAddCode(e.target.value)}
               placeholder="Product code (e.g. 12345)"
-              className="flex-1 sm:max-w-xs rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm focus:border-zinc-900 focus:outline-none"
+              className="flex-1 sm:max-w-xs rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm focus:border-brand-orange focus:outline-none"
             />
             <button
               type="submit"
               disabled={!addCode.trim() || addItem.isPending}
-              className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50"
+              className="rounded-md bg-brand-orange px-4 py-2 text-sm font-medium text-white hover:bg-brand-orange-dark disabled:opacity-50"
             >
               {addItem.isPending ? "Adding..." : "Add"}
             </button>
@@ -959,7 +959,7 @@ export default function OrderDetailPage() {
       )}
 
       {/* ── 7. Summary Footer ── */}
-      <footer className="rounded-lg border border-zinc-200 bg-zinc-50 p-4">
+      <footer className="rounded-xl shadow-sm border border-zinc-200 bg-brand-cream p-4">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
           <div className="flex gap-4 sm:gap-6 text-sm text-zinc-600 flex-wrap">
             <div>

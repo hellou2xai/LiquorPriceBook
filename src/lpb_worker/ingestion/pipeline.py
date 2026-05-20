@@ -24,6 +24,7 @@ from __future__ import annotations
 import gc
 import hashlib
 import logging
+import re
 import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
@@ -353,7 +354,7 @@ def _upsert_products_and_editions(
                 "brand_id": r.get("brand_id"),
                 "raw_category": r.get("category"),
                 "raw_brand_header": r.get("brand_header"),
-                "description": r.get("sub_brand") or r.get("brand_header"),
+                "description": _clean_description(r.get("sub_brand") or r.get("brand_header")),
                 "divisions": r.get("divisions"),
                 "size": r.get("size"),
                 "pack": r.get("pack"),
@@ -701,6 +702,25 @@ def _record_low_confidence(
         )
     if lc_rows:
         session.execute(pg_insert(LowConfidenceMatch).values(lc_rows))
+
+
+_DIVISION_SUFFIX_RE = re.compile(
+    r"\s+(?:[LSDGFBJDIV]{1,2}\s*)+\(\s*[LSDGFBJDIV ]+\s*\)\s*$"
+    r"|"
+    r"\s*\(\s*[LSDGFBJDIV ]{3,}\s*\)\s*$"
+)
+
+
+def _clean_description(desc: str | None) -> str | None:
+    """Strip trailing division codes from product descriptions.
+
+    E.g. "BLUE 80 PROOF FB ( L GS JD IV )" -> "BLUE 80 PROOF"
+         "CHARDONNAY 2022 ( L GS FB JD IV )" -> "CHARDONNAY 2022"
+    """
+    if not desc:
+        return desc
+    cleaned = _DIVISION_SUFFIX_RE.sub("", desc).strip()
+    return cleaned or desc
 
 
 def _to_decimal(v):

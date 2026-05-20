@@ -315,7 +315,7 @@ function AddToOrderButton({
         <span className="text-[10px] font-medium whitespace-nowrap">
           <span className={flash.orderId ? "text-emerald-600" : "text-red-600"}>{flash.text}</span>
           {flash.orderId && (
-            <Link to={`/orders/${flash.orderId}`} className="ml-1 text-zinc-500 underline hover:text-zinc-800">
+            <Link to={`/orders/${flash.orderId}`} className="ml-1 text-brand-orange underline hover:text-brand-orange-dark">
               View
             </Link>
           )}
@@ -324,7 +324,7 @@ function AddToOrderButton({
         <button
           onClick={() => setOpen(!open)}
           disabled={busy}
-          className="rounded border border-zinc-300 bg-white px-1.5 py-0.5 text-[10px] text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900 whitespace-nowrap disabled:opacity-50"
+          className="rounded border border-zinc-300 bg-brand-tan text-brand-navy px-1.5 py-0.5 text-[10px] hover:bg-zinc-200 whitespace-nowrap disabled:opacity-50"
           title="Add this product to an order"
         >
           + Order
@@ -342,7 +342,7 @@ function AddToOrderButton({
                   key={o.id}
                   onClick={() => addToOrder(o.id)}
                   disabled={busy}
-                  className="w-full text-left px-3 py-1.5 text-xs text-zinc-700 hover:bg-zinc-50 disabled:opacity-50 flex items-center justify-between"
+                  className="w-full text-left px-3 py-1.5 text-xs text-zinc-700 hover:bg-brand-tan disabled:opacity-50 flex items-center justify-between"
                 >
                   <span className="truncate">{o.name}</span>
                   <span className="text-[10px] text-zinc-400 ml-2">{o.item_count} items</span>
@@ -354,7 +354,7 @@ function AddToOrderButton({
           {!showNew ? (
             <button
               onClick={() => setShowNew(true)}
-              className="w-full text-left px-3 py-1.5 text-xs text-zinc-700 hover:bg-zinc-50 font-medium"
+              className="w-full text-left px-3 py-1.5 text-xs text-zinc-700 hover:bg-brand-tan font-medium"
             >
               + Create new order...
             </button>
@@ -366,13 +366,13 @@ function AddToOrderButton({
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
                 placeholder="Order name..."
-                className="w-full rounded border border-zinc-300 px-2 py-1 text-xs focus:border-zinc-900 focus:outline-none"
+                className="w-full rounded border border-zinc-300 px-2 py-1 text-xs focus:border-brand-orange focus:outline-none"
                 onKeyDown={(e) => { if (e.key === "Enter") createAndAdd(); if (e.key === "Escape") { setShowNew(false); setNewName(""); } }}
               />
               <button
                 onClick={createAndAdd}
                 disabled={!newName.trim() || busy}
-                className="w-full rounded bg-zinc-900 px-2 py-1 text-[10px] text-white hover:bg-zinc-800 disabled:opacity-50"
+                className="w-full rounded bg-brand-orange px-2 py-1 text-[10px] text-white hover:bg-brand-orange-dark disabled:opacity-50"
               >
                 Create & Add
               </button>
@@ -569,7 +569,7 @@ export default function Watchlist() {
     const hasMultipleRips = rips.length > 1;
 
     const mainRow = (
-      <tr key={item.product_code} className={`hover:bg-zinc-50 align-top ${item.buy_signal === "BUY_NOW" ? "bg-emerald-50/30" : item.buy_signal === "DEFER" ? "bg-amber-50/20" : ""}`}>
+      <tr key={item.product_code} className={`hover:bg-brand-tan align-top ${item.buy_signal === "BUY_NOW" ? "bg-emerald-50/30" : item.buy_signal === "DEFER" ? "bg-amber-50/20" : ""}`}>
         <td className="px-2 py-2">
           <FavoriteButton code={item.product_code} isFavorite={true} />
         </td>
@@ -581,7 +581,7 @@ export default function Watchlist() {
 
         {/* Product */}
         <td className="px-2 py-2">
-          <Link to={`/catalog/${item.product_code}`} className="hover:underline font-medium text-zinc-900">
+          <Link to={`/catalog/${item.product_code}`} className="hover:underline font-medium text-brand-navy hover:text-brand-orange">
             {item.description ?? "Unknown"}
           </Link>
           <div className="text-xs text-zinc-500 mt-0.5">
@@ -730,15 +730,15 @@ export default function Watchlist() {
     <div className="space-y-4">
       <header className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
         <div className="space-y-1">
-          <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">My Order List</h1>
+          <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-brand-navy">My Order List</h1>
           <p className="text-sm text-zinc-600">
             {q.data ? `${q.data.length} saved product${q.data.length === 1 ? "" : "s"}` : "Loading..."}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <button onClick={() => setShowTemplates(!showTemplates)} className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-xs hover:bg-zinc-50">Templates</button>
-          <button onClick={() => setShowHistory(!showHistory)} className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-xs hover:bg-zinc-50">History</button>
-          <button onClick={() => exportCsv(items, cart)} disabled={summary.totalItems === 0} className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-xs hover:bg-zinc-50 disabled:opacity-40">Export CSV</button>
+          <button onClick={() => setShowTemplates(!showTemplates)} className="rounded-md border border-zinc-300 bg-brand-tan text-brand-navy px-3 py-1.5 text-xs hover:bg-zinc-200">Templates</button>
+          <button onClick={() => setShowHistory(!showHistory)} className="rounded-md border border-zinc-300 bg-brand-tan text-brand-navy px-3 py-1.5 text-xs hover:bg-zinc-200">History</button>
+          <button onClick={() => exportCsv(items, cart)} disabled={summary.totalItems === 0} className="rounded-md border border-zinc-300 bg-brand-tan text-brand-navy px-3 py-1.5 text-xs hover:bg-zinc-200 disabled:opacity-40">Export CSV</button>
         </div>
       </header>
 
@@ -770,13 +770,13 @@ export default function Watchlist() {
 
       {/* Templates Panel */}
       {showTemplates && (
-        <div className="rounded-lg border border-zinc-200 bg-white p-4 space-y-3">
-          <h3 className="text-sm font-medium text-zinc-700">Order Templates</h3>
+        <div className="rounded-xl shadow-sm border border-zinc-200 bg-white p-4 space-y-3">
+          <h3 className="text-sm font-medium text-brand-navy">Order Templates</h3>
           <div className="flex gap-2">
             <input type="text" value={templateName} onChange={(e) => setTemplateName(e.target.value)} placeholder="Template name..."
-              className="flex-1 rounded-md border border-zinc-300 px-2.5 py-1.5 text-sm focus:border-zinc-900 focus:outline-none"
+              className="flex-1 rounded-md border border-zinc-300 px-2.5 py-1.5 text-sm focus:border-brand-orange focus:outline-none"
               onKeyDown={(e) => { if (e.key === "Enter") saveTemplate(); }} />
-            <button onClick={saveTemplate} disabled={!templateName.trim() || summary.totalItems === 0} className="rounded-md bg-zinc-900 px-3 py-1.5 text-xs text-white hover:bg-zinc-800 disabled:opacity-40">Save Cart</button>
+            <button onClick={saveTemplate} disabled={!templateName.trim() || summary.totalItems === 0} className="rounded-md bg-brand-orange px-3 py-1.5 text-xs text-white hover:bg-brand-orange-dark disabled:opacity-40">Save Cart</button>
           </div>
           {templates.length === 0 ? (
             <p className="text-xs text-zinc-400">No templates yet.</p>
@@ -789,7 +789,7 @@ export default function Watchlist() {
                     <span className="ml-2 text-xs text-zinc-400">{Object.keys(t.cart).length} items · {new Date(t.savedAt).toLocaleDateString()}</span>
                   </div>
                   <div className="flex gap-2">
-                    <button onClick={() => loadTemplate(t)} className="rounded border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-50">Load</button>
+                    <button onClick={() => loadTemplate(t)} className="rounded border border-zinc-300 bg-brand-tan text-brand-navy px-2 py-1 text-xs hover:bg-zinc-200">Load</button>
                     <button onClick={() => deleteTemplate(t.name)} className="rounded border border-red-200 px-2 py-1 text-xs text-red-600 hover:bg-red-50">Delete</button>
                   </div>
                 </div>
@@ -801,8 +801,8 @@ export default function Watchlist() {
 
       {/* History Panel */}
       {showHistory && (
-        <div className="rounded-lg border border-zinc-200 bg-white p-4 space-y-3">
-          <h3 className="text-sm font-medium text-zinc-700">Order History</h3>
+        <div className="rounded-xl shadow-sm border border-zinc-200 bg-white p-4 space-y-3">
+          <h3 className="text-sm font-medium text-brand-navy">Order History</h3>
           {history.length === 0 ? (
             <p className="text-xs text-zinc-400">No saved orders yet.</p>
           ) : (
@@ -825,11 +825,11 @@ export default function Watchlist() {
                   </div>
                   <div className="flex gap-2">
                     {h.orderId && (
-                      <Link to={`/orders/${h.orderId}`} className="rounded border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-50">
+                      <Link to={`/orders/${h.orderId}`} className="rounded border border-zinc-300 bg-brand-tan text-brand-navy px-2 py-1 text-xs hover:bg-zinc-200">
                         View Order
                       </Link>
                     )}
-                    <button onClick={() => loadFromHistory(h)} className="rounded border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-50">Re-order</button>
+                    <button onClick={() => loadFromHistory(h)} className="rounded border border-zinc-300 bg-brand-tan text-brand-navy px-2 py-1 text-xs hover:bg-zinc-200">Re-order</button>
                   </div>
                 </div>
               ))}
@@ -841,12 +841,12 @@ export default function Watchlist() {
       {/* Filters */}
       <div className="flex flex-col md:flex-row gap-3 md:items-center">
         <input type="text" placeholder="Search products..." value={search} onChange={(e) => setSearch(e.target.value)}
-          className="flex-1 rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm focus:border-zinc-900 focus:outline-none" />
-        <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} className="rounded-md border border-zinc-300 bg-white px-2.5 py-2 text-sm">
+          className="flex-1 rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm focus:border-brand-orange focus:outline-none" />
+        <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} className="rounded-md border border-zinc-300 bg-white px-2.5 py-2 text-sm focus:border-brand-orange focus:outline-none">
           <option value="">All categories</option>
           {categories.map(([slug, display]) => (<option key={slug} value={slug}>{display}</option>))}
         </select>
-        <select value={sort} onChange={(e) => setSort(e.target.value as SortKey)} className="rounded-md border border-zinc-300 bg-white px-2.5 py-2 text-sm">
+        <select value={sort} onChange={(e) => setSort(e.target.value as SortKey)} className="rounded-md border border-zinc-300 bg-white px-2.5 py-2 text-sm focus:border-brand-orange focus:outline-none">
           <option value="buy_signal">Buy Signal</option>
           <option value="name">Product A-Z</option>
           <option value="price_asc">Price low-high</option>
@@ -854,16 +854,16 @@ export default function Watchlist() {
           <option value="rip_save">Best RIP savings</option>
         </select>
         <label className="flex items-center gap-1.5 text-sm text-zinc-600 cursor-pointer">
-          <input type="checkbox" checked={groupByCategory} onChange={(e) => setGroupByCategory(e.target.checked)} className="rounded border-zinc-300" />
+          <input type="checkbox" checked={groupByCategory} onChange={(e) => setGroupByCategory(e.target.checked)} className="rounded border-zinc-300 text-brand-orange focus:ring-brand-orange" />
           Group by category
         </label>
       </div>
 
       {/* Table */}
-      <div className="rounded-lg border border-zinc-200 bg-white overflow-hidden">
+      <div className="rounded-xl shadow-sm border border-zinc-200 bg-white overflow-hidden">
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-zinc-200 text-sm">
-            <thead className="bg-zinc-50 text-left text-[10px] uppercase tracking-wide text-zinc-500">
+            <thead className="bg-brand-tan text-left text-[10px] uppercase tracking-wide text-brand-navy">
               <tr>
                 <th className="px-2 py-2 w-7"></th>
                 <th className="px-2 py-2">Signal</th>
@@ -888,14 +888,14 @@ export default function Watchlist() {
               ) : items.length === 0 ? (
                 <tr>
                   <td colSpan={COL_SPAN} className="px-4 py-6 text-center text-zinc-500">
-                    No items yet. Browse the <Link to="/catalog" className="text-zinc-900 underline">Catalog</Link> and star products to add them.
+                    No items yet. Browse the <Link to="/catalog" className="text-brand-orange underline hover:text-brand-orange-dark">Catalog</Link> and star products to add them.
                   </td>
                 </tr>
               ) : groupedItems ? (
                 groupedItems.map(([cat, catItems]) => (
                   <>
-                    <tr key={`cat-${cat}`} className="bg-zinc-100">
-                      <td colSpan={COL_SPAN} className="px-4 py-2 text-xs font-semibold text-zinc-700 uppercase tracking-wide">
+                    <tr key={`cat-${cat}`} className="bg-brand-tan">
+                      <td colSpan={COL_SPAN} className="px-4 py-2 text-xs font-semibold text-brand-navy uppercase tracking-wide">
                         {cat} ({catItems.length})
                         {summary.byCat[cat] && <span className="ml-3 font-normal normal-case text-zinc-500">Subtotal: {money(summary.byCat[cat].cost)}</span>}
                       </td>
@@ -912,7 +912,7 @@ export default function Watchlist() {
 
         {/* Summary bar */}
         {items.length > 0 && (
-          <div className="border-t border-zinc-200 bg-zinc-50 px-3 sm:px-4 py-3 space-y-2">
+          <div className="border-t border-zinc-200 bg-brand-cream px-3 sm:px-4 py-3 space-y-2">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-sm">
               <div className="text-zinc-700">
                 {summary.totalItems > 0 ? (
@@ -922,7 +922,7 @@ export default function Watchlist() {
                 )}
               </div>
               <div className="flex items-center gap-2">
-                <button onClick={saveToHistory} disabled={savingOrder} className="rounded-md bg-zinc-900 text-white px-3 py-1.5 text-xs font-medium hover:bg-zinc-800 disabled:opacity-50">
+                <button onClick={saveToHistory} disabled={savingOrder} className="rounded-md bg-brand-orange text-white px-3 py-1.5 text-xs font-medium hover:bg-brand-orange-dark disabled:opacity-50">
                   {savingOrder ? "Creating Order..." : "Save as Order"}
                 </button>
               </div>

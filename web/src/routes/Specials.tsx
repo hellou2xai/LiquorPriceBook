@@ -98,7 +98,7 @@ export default function Specials() {
   return (
     <div className="space-y-5">
       <header className="space-y-1">
-        <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">
+        <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-brand-navy">
           Web Specials
         </h1>
         <p className="text-sm text-zinc-600">
@@ -156,7 +156,7 @@ export default function Specials() {
             return (
               <div
                 key={key}
-                className="rounded-lg border border-zinc-200 bg-white overflow-hidden"
+                className="rounded-xl shadow-sm border border-zinc-200 bg-white overflow-hidden"
               >
                 {/* Date group header */}
                 <div
@@ -179,7 +179,7 @@ export default function Specials() {
 
                 {/* Items table */}
                 <table className="min-w-full divide-y divide-zinc-100 text-sm">
-                  <thead className="bg-zinc-50/50 text-left text-[10px] uppercase tracking-wide text-zinc-500">
+                  <thead className="bg-brand-tan text-left text-[10px] uppercase tracking-wide text-brand-navy">
                     <tr>
                       <th className="px-4 py-1.5">Type</th>
                       <th className="px-4 py-1.5">Description</th>
@@ -232,13 +232,13 @@ function SpecialRow({ special: s }: { special: WebSpecial }) {
         : null;
 
   return (
-    <tr className="hover:bg-zinc-50">
+    <tr className="hover:bg-brand-tan">
       <td className="px-4 py-2">
         <span
           className={`inline-flex items-center rounded-md border px-1.5 py-0.5 text-[10px] font-medium ${
             s.kind === "rip"
-              ? "bg-amber-50 border-amber-200 text-amber-800"
-              : "bg-sky-50 border-sky-200 text-sky-800"
+              ? "bg-brand-navy/5 border-brand-navy/10 text-brand-navy"
+              : "bg-brand-navy/5 border-brand-navy/10 text-brand-navy"
           }`}
         >
           {s.kind === "rip" ? "WEB RIP" : "WEB PRICE"}
@@ -260,7 +260,7 @@ function SpecialRow({ special: s }: { special: WebSpecial }) {
         {s.product_code ? (
           <Link
             to={`/catalog/${s.product_code}`}
-            className="text-zinc-700 hover:underline font-mono text-xs"
+            className="text-brand-navy hover:text-brand-orange font-mono text-xs"
           >
             {s.product_code}
           </Link>
@@ -324,7 +324,7 @@ function SummaryCard({
       onClick={onClick}
       className={`rounded-lg border bg-white p-3 text-left transition-all ${
         colors[color] ?? colors.zinc
-      } ${active ? "ring-2 ring-zinc-900 ring-offset-1" : "hover:shadow-sm"}`}
+      } ${active ? "ring-2 ring-brand-navy ring-offset-1" : "hover:shadow-sm"}`}
     >
       <div className="text-2xl font-bold tabular-nums text-zinc-900">
         {value}

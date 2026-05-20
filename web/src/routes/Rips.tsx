@@ -88,7 +88,7 @@ export default function Rips() {
       sortable: true,
       sortValue: (r) => r.code,
       render: (r) => (
-        <Link to={`/catalog/${r.code}`} className="font-mono text-xs hover:underline">{r.code}</Link>
+        <Link to={`/catalog/${r.code}`} className="font-mono text-xs text-brand-navy hover:text-brand-orange hover:underline">{r.code}</Link>
       ),
     },
     {
@@ -97,7 +97,7 @@ export default function Rips() {
       sortable: true,
       sortValue: (r) => r.description ?? "",
       render: (r) => (
-        <Link to={`/catalog/${r.code}`} className="hover:underline">{r.description ?? "\u2014"}</Link>
+        <Link to={`/catalog/${r.code}`} className="text-brand-navy hover:text-brand-orange hover:underline">{r.description ?? "\u2014"}</Link>
       ),
     },
     {
@@ -167,7 +167,7 @@ export default function Rips() {
         ) : r.stable ? (
           <span className="inline-flex items-center rounded-md bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 text-xs text-emerald-800">stable</span>
         ) : (
-          <span className="inline-flex items-center rounded-md bg-amber-50 border border-amber-200 px-1.5 py-0.5 text-xs text-amber-800">rotating</span>
+          <span className="inline-flex items-center rounded-md bg-brand-orange/10 border border-brand-orange/20 px-1.5 py-0.5 text-xs text-brand-orange">rotating</span>
         ),
     },
   ];
@@ -177,7 +177,7 @@ export default function Rips() {
   return (
     <div className="space-y-5">
       <header className="space-y-1">
-        <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">RIPs</h1>
+        <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-brand-navy">RIPs</h1>
         <p className="text-sm text-zinc-600">
           Retail Incentive Programs — ranked by savings. {stats && `${stats.count} RIPs shown.`}
         </p>
@@ -210,7 +210,7 @@ export default function Rips() {
           placeholder="Search SKU, description, brand..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="w-full sm:w-64 rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm placeholder:text-zinc-400 focus:border-zinc-900 focus:outline-none"
+          className="w-full sm:w-64 rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm placeholder:text-zinc-400 focus:border-brand-orange focus:outline-none"
         />
         <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} className="rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-sm">
           <option value="">All categories</option>
@@ -237,7 +237,7 @@ export default function Rips() {
         </select>
       </div>
 
-      <div className="rounded-lg border border-zinc-200 bg-white overflow-hidden">
+      <div className="rounded-xl border border-zinc-200/80 bg-white overflow-hidden shadow-sm">
         {ripsQ.isLoading ? (
           <div className="text-center py-12 text-zinc-500">Loading...</div>
         ) : (

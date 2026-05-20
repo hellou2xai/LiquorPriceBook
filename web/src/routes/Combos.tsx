@@ -78,7 +78,7 @@ export default function Combos() {
   return (
     <div className="space-y-5">
       <header className="space-y-1">
-        <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">Combos</h1>
+        <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-brand-navy">Combos</h1>
         <p className="text-sm text-zinc-600">
           Bundled SKUs from the current edition. {rows.length > 0 && `${rows.length} combos loaded.`}
         </p>
@@ -90,7 +90,7 @@ export default function Combos() {
           placeholder="Search SKU, code, or contents..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="w-full sm:w-64 rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm placeholder:text-zinc-400 focus:border-zinc-900 focus:outline-none"
+          className="w-full sm:w-64 rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm placeholder:text-zinc-400 focus:border-brand-orange focus:outline-none"
         />
         {subcategories.length > 0 && (
           <select
@@ -106,7 +106,7 @@ export default function Combos() {
         )}
       </div>
 
-      <div className="rounded-lg border border-zinc-200 bg-white overflow-hidden">
+      <div className="rounded-xl border border-zinc-200/80 bg-white overflow-hidden shadow-sm">
         {combosQ.isLoading ? (
           <div className="text-center py-12 text-zinc-500">Loading...</div>
         ) : (

@@ -96,7 +96,7 @@ export default function Orders() {
             {o.name}
           </Link>
           {o.hidden_at && (
-            <span className="inline-flex items-center rounded-full bg-zinc-100 border border-zinc-200 px-1.5 py-0.5 text-[10px] text-zinc-500">hidden</span>
+            <span className="inline-flex items-center rounded-full bg-brand-navy/5 border border-brand-navy/10 px-1.5 py-0.5 text-[10px] text-brand-navy">hidden</span>
           )}
         </div>
       ),
@@ -192,7 +192,7 @@ export default function Orders() {
             <button
               onClick={() => unhideMut.mutate(o.id)}
               disabled={unhideMut.isPending}
-              className="rounded border border-zinc-300 bg-white px-2 py-0.5 text-[10px] text-zinc-600 hover:bg-zinc-50 disabled:opacity-50"
+              className="rounded border border-zinc-300 bg-brand-tan text-brand-navy px-2 py-0.5 text-[10px] hover:bg-zinc-200 disabled:opacity-50"
               title="Unhide this order"
             >
               Unhide
@@ -201,7 +201,7 @@ export default function Orders() {
             <button
               onClick={() => hideMut.mutate(o.id)}
               disabled={hideMut.isPending}
-              className="rounded border border-zinc-300 bg-white px-2 py-0.5 text-[10px] text-zinc-600 hover:bg-zinc-50 disabled:opacity-50"
+              className="rounded border border-zinc-300 bg-brand-tan text-brand-navy px-2 py-0.5 text-[10px] hover:bg-zinc-200 disabled:opacity-50"
               title="Hide this order from the list"
             >
               Hide
@@ -218,7 +218,7 @@ export default function Orders() {
               </button>
               <button
                 onClick={() => setConfirmDelete(null)}
-                className="rounded border border-zinc-300 bg-white px-2 py-0.5 text-[10px] text-zinc-600 hover:bg-zinc-50"
+                className="rounded border border-zinc-300 bg-brand-tan text-brand-navy px-2 py-0.5 text-[10px] hover:bg-zinc-200"
               >
                 Cancel
               </button>
@@ -261,15 +261,15 @@ export default function Orders() {
     <div className="space-y-4 sm:space-y-5">
       <header className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
         <div className="space-y-1">
-          <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">Orders</h1>
+          <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-brand-navy">Orders</h1>
           <p className="text-sm text-zinc-600">
             Create named orders with quantities, division targeting, and payment analysis.
-            Star products on the <Link to="/watchlist" className="text-zinc-900 underline hover:text-zinc-700">Tracked</Link> page, then copy them into orders here.
+            Star products on the <Link to="/watchlist" className="text-brand-orange underline hover:text-brand-orange-dark">Tracked</Link> page, then copy them into orders here.
           </p>
         </div>
         <button
           onClick={() => setShowCreate((v) => !v)}
-          className="rounded-md bg-zinc-900 px-3.5 py-1.5 text-sm font-medium text-white hover:bg-zinc-800 transition-colors self-start whitespace-nowrap"
+          className="rounded-md bg-brand-orange px-3.5 py-1.5 text-sm font-medium text-white hover:bg-brand-orange-dark transition-colors self-start whitespace-nowrap"
         >
           {showCreate ? "Cancel" : "New Order"}
         </button>
@@ -279,9 +279,9 @@ export default function Orders() {
       {showCreate && (
         <form
           onSubmit={handleCreate}
-          className="rounded-lg border border-zinc-200 bg-white p-4 space-y-3"
+          className="rounded-xl shadow-sm border border-zinc-200 bg-white p-4 space-y-3"
         >
-          <h2 className="text-sm font-medium text-zinc-900">Create New Order</h2>
+          <h2 className="text-sm font-medium text-brand-navy">Create New Order</h2>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
               <label className="block text-xs text-zinc-500 mb-1">Order Name *</label>
@@ -291,7 +291,7 @@ export default function Orders() {
                 onChange={(e) => setNewName(e.target.value)}
                 placeholder="e.g. Week 21 Restock"
                 required
-                className="w-full rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm placeholder:text-zinc-400 focus:border-zinc-900 focus:outline-none"
+                className="w-full rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm placeholder:text-zinc-400 focus:border-brand-orange focus:outline-none"
               />
             </div>
             <div>
@@ -299,7 +299,7 @@ export default function Orders() {
               <select
                 value={newDivision}
                 onChange={(e) => setNewDivision(e.target.value)}
-                className="w-full rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-sm"
+                className="w-full rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-sm focus:border-brand-orange focus:outline-none"
               >
                 <option value="">None</option>
                 {DIVISIONS.filter((d) => d !== "all").map((d) => (
@@ -314,7 +314,7 @@ export default function Orders() {
                 value={newNotes}
                 onChange={(e) => setNewNotes(e.target.value)}
                 placeholder="Optional notes..."
-                className="w-full rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm placeholder:text-zinc-400 focus:border-zinc-900 focus:outline-none"
+                className="w-full rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm placeholder:text-zinc-400 focus:border-brand-orange focus:outline-none"
               />
             </div>
           </div>
@@ -322,7 +322,7 @@ export default function Orders() {
             <button
               type="submit"
               disabled={createMut.isPending || !newName.trim()}
-              className="rounded-md bg-zinc-900 px-3.5 py-1.5 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50 transition-colors"
+              className="rounded-md bg-brand-orange px-3.5 py-1.5 text-sm font-medium text-white hover:bg-brand-orange-dark disabled:opacity-50 transition-colors"
             >
               {createMut.isPending ? "Creating..." : "Create Order"}
             </button>
@@ -344,8 +344,8 @@ export default function Orders() {
               onClick={() => setStatusFilter(s)}
               className={`rounded-md px-2.5 py-1 text-xs font-medium capitalize transition-colors ${
                 statusFilter === s
-                  ? "bg-zinc-900 text-white"
-                  : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200"
+                  ? "bg-brand-navy text-white"
+                  : "text-zinc-600 hover:bg-brand-tan"
               }`}
             >
               {s}
@@ -362,8 +362,8 @@ export default function Orders() {
               onClick={() => setDivisionFilter(d)}
               className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
                 divisionFilter === d
-                  ? "bg-zinc-900 text-white"
-                  : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200"
+                  ? "bg-brand-navy text-white"
+                  : "text-zinc-600 hover:bg-brand-tan"
               }`}
             >
               {d === "all" ? "All" : d}
@@ -378,7 +378,7 @@ export default function Orders() {
               type="checkbox"
               checked={showHidden}
               onChange={(e) => setShowHidden(e.target.checked)}
-              className="rounded border-zinc-300 h-3.5 w-3.5"
+              className="rounded border-zinc-300 h-3.5 w-3.5 text-brand-orange focus:ring-brand-orange"
             />
             Show hidden orders
           </label>
@@ -389,7 +389,7 @@ export default function Orders() {
       </div>
 
       {/* Table */}
-      <div className="rounded-lg border border-zinc-200 bg-white overflow-hidden">
+      <div className="rounded-xl shadow-sm border border-zinc-200 bg-white overflow-hidden">
         {ordersQ.isLoading ? (
           <div className="text-center py-12 text-zinc-500">Loading orders...</div>
         ) : ordersQ.isError ? (
@@ -408,7 +408,7 @@ export default function Orders() {
               </div>
               <button
                 onClick={() => setShowCreate(true)}
-                className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 transition-colors"
+                className="rounded-md bg-brand-orange px-4 py-2 text-sm font-medium text-white hover:bg-brand-orange-dark transition-colors"
               >
                 Create Your First Order
               </button>

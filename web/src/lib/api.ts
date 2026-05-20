@@ -684,6 +684,42 @@ export const analyticsApi = {
     api<AnalyticsResponse>(`/api/v1/analytics${_qs({ view, limit })}`),
 };
 
+// ---------- Price History ----------
+
+export type PriceDataPoint = {
+  edition_label: string;
+  year: number;
+  month: number;
+  case_cost: number | null;
+  btl_cost: number | null;
+  best_rip_save: number | null;
+  effective_cost: number | null;
+  has_rip: boolean;
+  has_closeout: boolean;
+};
+
+export type PriceHistorySummary = {
+  min_case_cost: number | null;
+  max_case_cost: number | null;
+  avg_case_cost: number | null;
+  current_case_cost: number | null;
+  total_editions: number;
+  price_trend: "rising" | "falling" | "stable";
+};
+
+export type PriceHistoryResponse = {
+  code: string;
+  description: string;
+  brand: string | null;
+  data_points: PriceDataPoint[];
+  summary: PriceHistorySummary;
+};
+
+export const priceHistoryApi = {
+  get: (code: string) =>
+    api<PriceHistoryResponse>(`/api/v1/catalog/${code}/price-history`),
+};
+
 // ---------- Sales Reps ----------
 
 export type SalesRepOut = {

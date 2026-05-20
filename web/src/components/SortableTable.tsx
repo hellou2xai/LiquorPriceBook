@@ -98,7 +98,7 @@ export function SortableHeader<T>({
 
   if (!column.sortable) {
     return (
-      <th className={`px-3 py-2 text-[10px] uppercase tracking-wide text-zinc-500 font-medium ${textAlign} ${hideCls} ${column.thClassName ?? ""}`}>
+      <th className={`px-3 py-2 text-[10px] uppercase tracking-wide text-brand-navy font-medium ${textAlign} ${hideCls} ${column.thClassName ?? ""}`}>
         {column.label}
       </th>
     );
@@ -107,7 +107,7 @@ export function SortableHeader<T>({
   return (
     <th
       className={`px-3 py-2 text-[10px] uppercase tracking-wide font-medium cursor-pointer select-none group ${textAlign} ${
-        active ? "text-zinc-900" : "text-zinc-500 hover:text-zinc-700"
+        active ? "text-brand-navy" : "text-brand-navy/60 hover:text-brand-navy"
       } ${hideCls} ${column.thClassName ?? ""}`}
       onClick={() => onSort(column.key)}
     >
@@ -143,7 +143,7 @@ export default function SortableTable<T>({
   return (
     <div className={`overflow-x-auto -mx-3 sm:mx-0 ${className}`}>
       <table className="min-w-full divide-y divide-zinc-200 text-sm">
-        <thead className="bg-zinc-50/80">
+        <thead className="bg-brand-tan">
           <tr>
             {columns.map((col) => (
               <SortableHeader key={col.key} column={col} sort={sort} onSort={onSort} />
@@ -154,7 +154,7 @@ export default function SortableTable<T>({
           {data.map((item, i) => (
             <tr
               key={rowKey(item, i)}
-              className={`hover:bg-zinc-50 ${onRowClick ? "cursor-pointer" : ""}`}
+              className={`hover:bg-brand-tan ${onRowClick ? "cursor-pointer" : ""}`}
               onClick={onRowClick ? () => onRowClick(item) : undefined}
             >
               {columns.map((col) => {

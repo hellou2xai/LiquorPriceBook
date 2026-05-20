@@ -7,14 +7,17 @@ import { money, pct, pctClass } from "../lib/fmt";
 import type { MoverRow } from "../lib/api";
 
 function KpiCard({ label, value, sub, accent }: { label: string; value: string | number; sub?: string; accent?: "emerald" | "red" | "amber" | "sky" }) {
-  const border = accent ? `border-${accent}-200` : "border-zinc-200";
-  const bg = accent ? `bg-${accent}-50` : "bg-white";
-  const labelColor = accent ? `text-${accent}-600` : "text-zinc-500";
-  const valueColor = accent ? `text-${accent}-800` : "text-zinc-900";
+  const styles: Record<string, { border: string; bg: string; labelColor: string; valueColor: string }> = {
+    emerald: { border: "border-emerald-200", bg: "bg-emerald-50", labelColor: "text-emerald-600", valueColor: "text-emerald-800" },
+    red:     { border: "border-rose-200",    bg: "bg-rose-50",    labelColor: "text-rose-600",    valueColor: "text-rose-800"    },
+    amber:   { border: "border-brand-orange/20", bg: "bg-brand-orange/5", labelColor: "text-brand-orange", valueColor: "text-brand-orange" },
+    sky:     { border: "border-brand-navy/20",   bg: "bg-brand-navy/5",   labelColor: "text-brand-navy",   valueColor: "text-brand-navy"   },
+  };
+  const s = accent ? styles[accent] : { border: "border-l-4 border-brand-navy", bg: "bg-white", labelColor: "text-zinc-500", valueColor: "text-zinc-900" };
   return (
-    <div className={`rounded-lg border ${border} ${bg} px-4 py-3`}>
-      <div className={`text-xs font-medium ${labelColor}`}>{label}</div>
-      <div className={`text-xl font-bold ${valueColor} tabular-nums mt-0.5`}>{value}</div>
+    <div className={`rounded-lg border ${s.border} ${s.bg} px-4 py-3`}>
+      <div className={`text-xs font-medium ${s.labelColor}`}>{label}</div>
+      <div className={`text-xl font-bold ${s.valueColor} tabular-nums mt-0.5`}>{value}</div>
       {sub && <div className="text-[10px] text-zinc-400 mt-0.5">{sub}</div>}
     </div>
   );
@@ -25,9 +28,9 @@ function MoverPanel({ title, subtitle, rows, loading, emptyHint, limit = 10 }: {
 }) {
   const displayed = (rows ?? []).slice(0, limit);
   return (
-    <section className="rounded-lg border border-zinc-200 bg-white">
-      <header className="border-b border-zinc-200 px-4 py-2">
-        <h2 className="text-sm font-medium text-zinc-700">{title}</h2>
+    <section className="rounded-xl border border-zinc-200/80 bg-white shadow-sm">
+      <header className="border-b border-zinc-100 px-4 py-3">
+        <h2 className="text-sm font-medium text-brand-navy">{title}</h2>
         <p className="text-xs text-zinc-500">{subtitle}</p>
       </header>
       <ul className="divide-y divide-zinc-100">
@@ -39,7 +42,7 @@ function MoverPanel({ title, subtitle, rows, loading, emptyHint, limit = 10 }: {
           displayed.map((m) => {
             const change = parseFloat(String(m.case_cost_pct ?? "0"));
             return (
-              <li key={m.code} className="px-4 py-2 text-sm flex items-center gap-3 hover:bg-zinc-50">
+              <li key={m.code} className="px-4 py-2 text-sm flex items-center gap-3 hover:bg-brand-tan">
                 <span className={`w-5 text-center ${change < 0 ? "text-emerald-600" : change > 0 ? "text-red-500" : "text-zinc-400"}`}>
                   {change < 0 ? "\u2193" : change > 0 ? "\u2191" : "\u2192"}
                 </span>
@@ -98,9 +101,9 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
-      <header className="space-y-1">
+      <header className="rounded-xl bg-brand-gradient p-5 sm:p-6 text-white">
         <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">Dashboard</h1>
-        <p className="text-sm text-zinc-600">
+        <p className="text-sm text-zinc-300 mt-1">
           Welcome{username ? `, ${username}` : ""}.
           {s ? ` ${s.edition_label} edition loaded.` : " Loading..."}
         </p>
@@ -121,14 +124,14 @@ export default function Dashboard() {
 
       {/* Buy-now alert banner */}
       {s && s.watchlist_buy_now > 0 && (
-        <div className="rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-3 flex items-center justify-between">
+        <div className="rounded-xl bg-brand-gradient-warm p-4 flex items-center justify-between shadow-sm">
           <div>
-            <p className="text-sm font-medium text-emerald-800">
+            <p className="text-sm font-medium text-white">
               {s.watchlist_buy_now} order list item{s.watchlist_buy_now > 1 ? "s" : ""} have BUY NOW signals
             </p>
-            <p className="text-xs text-emerald-600 mt-0.5">These products are at favorable pricing — act before the next edition.</p>
+            <p className="text-xs text-white/80 mt-0.5">These products are at favorable pricing — act before the next edition.</p>
           </div>
-          <Link to="/watchlist" className="rounded-md bg-emerald-700 px-3 py-1.5 text-xs text-white font-medium hover:bg-emerald-800">
+          <Link to="/watchlist" className="rounded-md bg-white px-3 py-1.5 text-xs text-brand-orange font-medium hover:bg-zinc-100">
             View Order List
           </Link>
         </div>
@@ -157,13 +160,13 @@ export default function Dashboard() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         {/* Top RIP Opportunities */}
-        <section className="rounded-lg border border-zinc-200 bg-white">
-          <header className="border-b border-zinc-200 px-4 py-2 flex items-center justify-between">
+        <section className="rounded-xl border border-zinc-200/80 bg-white shadow-sm">
+          <header className="border-b border-zinc-100 px-4 py-3 flex items-center justify-between">
             <div>
-              <h2 className="text-sm font-medium text-zinc-700">Top RIP Opportunities</h2>
+              <h2 className="text-sm font-medium text-brand-navy">Top RIP Opportunities</h2>
               <p className="text-xs text-zinc-500">Best savings % on retail incentive programs.</p>
             </div>
-            <Link to="/rips" className="text-xs text-zinc-500 hover:text-zinc-900">See all →</Link>
+            <Link to="/rips" className="text-xs text-brand-orange hover:text-brand-orange-dark">See all →</Link>
           </header>
           <ul className="divide-y divide-zinc-100">
             {ripsQ.isLoading ? (
@@ -172,10 +175,10 @@ export default function Dashboard() {
               <li className="px-4 py-3 text-sm text-zinc-500">No RIPs in current edition.</li>
             ) : (
               ripsQ.data!.slice(0, 5).map((r, i) => (
-                <li key={`${r.code}-${i}`} className="px-4 py-2 text-sm flex items-center gap-3 hover:bg-zinc-50">
+                <li key={`${r.code}-${i}`} className="px-4 py-2 text-sm flex items-center gap-3 hover:bg-brand-tan">
                   <Link to={`/catalog/${r.code}`} className="font-mono text-xs hover:underline w-20 shrink-0">{r.code}</Link>
                   <span className="flex-1 truncate text-zinc-700">{r.description ?? "\u2014"}</span>
-                  <span className="inline-flex items-center rounded-md bg-amber-50 border border-amber-200 px-1.5 py-0.5 text-[10px] font-medium text-amber-800">{r.tier}</span>
+                  <span className="inline-flex items-center rounded-md bg-brand-orange/10 border border-brand-orange/20 px-1.5 py-0.5 text-[10px] font-medium text-brand-orange">{r.tier}</span>
                   <span className="tabular-nums text-emerald-700 font-medium w-16 text-right">{money(r.save_amount)}</span>
                   <span className="tabular-nums text-emerald-700 font-medium w-12 text-right">
                     {r.effective_pct != null ? `${r.effective_pct.toFixed(1)}%` : "\u2014"}
@@ -187,13 +190,13 @@ export default function Dashboard() {
         </section>
 
         {/* Closeout Opportunities */}
-        <section className="rounded-lg border border-zinc-200 bg-white">
-          <header className="border-b border-zinc-200 px-4 py-2 flex items-center justify-between">
+        <section className="rounded-xl border border-zinc-200/80 bg-white shadow-sm">
+          <header className="border-b border-zinc-100 px-4 py-3 flex items-center justify-between">
             <div>
-              <h2 className="text-sm font-medium text-zinc-700">Closeout Deals</h2>
+              <h2 className="text-sm font-medium text-brand-navy">Closeout Deals</h2>
               <p className="text-xs text-zinc-500">Inventory reduction items — buy before they're gone.</p>
             </div>
-            <Link to="/closeouts" className="text-xs text-zinc-500 hover:text-zinc-900">See all →</Link>
+            <Link to="/closeouts" className="text-xs text-brand-orange hover:text-brand-orange-dark">See all →</Link>
           </header>
           <ul className="divide-y divide-zinc-100">
             {closeoutsQ.isLoading ? (
@@ -202,7 +205,7 @@ export default function Dashboard() {
               <li className="px-4 py-3 text-sm text-zinc-500">No closeouts in current edition.</li>
             ) : (
               closeoutsQ.data!.slice(0, 5).map((r) => (
-                <li key={r.code} className="px-4 py-2 text-sm flex items-center gap-3 hover:bg-zinc-50">
+                <li key={r.code} className="px-4 py-2 text-sm flex items-center gap-3 hover:bg-brand-tan">
                   <Link to={`/catalog/${r.code}`} className="font-mono text-xs hover:underline w-20 shrink-0">{r.code}</Link>
                   <span className="flex-1 truncate text-zinc-700">{r.description ?? "\u2014"}</span>
                   <span className="tabular-nums line-through text-zinc-400 w-16 text-right">{money(r.original_case)}</span>
@@ -228,9 +231,9 @@ export default function Dashboard() {
 
         {/* Category Distribution */}
         {s && s.top_rip_categories.length > 0 && (
-          <section className="rounded-lg border border-zinc-200 bg-white">
-            <header className="border-b border-zinc-200 px-4 py-2">
-              <h2 className="text-sm font-medium text-zinc-700">RIPs by Category</h2>
+          <section className="rounded-xl border border-zinc-200/80 bg-white shadow-sm">
+            <header className="border-b border-zinc-100 px-4 py-3">
+              <h2 className="text-sm font-medium text-brand-navy">RIPs by Category</h2>
               <p className="text-xs text-zinc-500">Where the savings are concentrated.</p>
             </header>
             <ul className="divide-y divide-zinc-100">
@@ -247,10 +250,10 @@ export default function Dashboard() {
       </div>
 
       {/* Alerts */}
-      <section className="rounded-lg border border-zinc-200 bg-white">
-        <header className="border-b border-zinc-200 px-4 py-2 flex items-center justify-between">
-          <h2 className="text-sm font-medium text-zinc-700">Recent Alerts</h2>
-          <Link to="/alerts" className="text-xs text-zinc-500 hover:text-zinc-900">See all →</Link>
+      <section className="rounded-xl border border-zinc-200/80 bg-white shadow-sm">
+        <header className="border-b border-zinc-100 px-4 py-3 flex items-center justify-between">
+          <h2 className="text-sm font-medium text-brand-navy">Recent Alerts</h2>
+          <Link to="/alerts" className="text-xs text-brand-orange hover:text-brand-orange-dark">See all →</Link>
         </header>
         <ul className="divide-y divide-zinc-100">
           {alertsQ.isLoading ? (
@@ -261,8 +264,8 @@ export default function Dashboard() {
             </li>
           ) : (
             alertsQ.data!.map((a) => (
-              <li key={a.id} className="px-4 py-2 text-sm flex items-center gap-2 hover:bg-zinc-50">
-                <span className="inline-flex items-center rounded-md border px-1.5 py-0.5 text-xs font-medium bg-zinc-50 border-zinc-200 text-zinc-700">
+              <li key={a.id} className="px-4 py-2 text-sm flex items-center gap-2 hover:bg-brand-tan">
+                <span className="inline-flex items-center rounded-md border px-1.5 py-0.5 text-xs font-medium bg-brand-navy/5 border-brand-navy/10 text-brand-navy">
                   {a.rule_type}
                 </span>
                 {a.product_code && (
@@ -280,20 +283,20 @@ export default function Dashboard() {
 
       {/* Quick Nav */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Link to="/catalog" className="rounded-lg border border-zinc-200 bg-white px-4 py-3 hover:border-zinc-400 transition-colors">
-          <div className="text-sm font-medium text-zinc-700">Catalog</div>
+        <Link to="/catalog" className="rounded-xl border border-zinc-200/80 bg-white px-4 py-3 hover:border-brand-orange hover:shadow-md transition-all group">
+          <div className="text-sm font-medium text-brand-navy group-hover:text-brand-orange">Catalog</div>
           <div className="text-xs text-zinc-500">Browse all products</div>
         </Link>
-        <Link to="/rips" className="rounded-lg border border-zinc-200 bg-white px-4 py-3 hover:border-zinc-400 transition-colors">
-          <div className="text-sm font-medium text-zinc-700">RIPs</div>
+        <Link to="/rips" className="rounded-xl border border-zinc-200/80 bg-white px-4 py-3 hover:border-brand-orange hover:shadow-md transition-all group">
+          <div className="text-sm font-medium text-brand-navy group-hover:text-brand-orange">RIPs</div>
           <div className="text-xs text-zinc-500">Retail incentive programs</div>
         </Link>
-        <Link to="/closeouts" className="rounded-lg border border-zinc-200 bg-white px-4 py-3 hover:border-zinc-400 transition-colors">
-          <div className="text-sm font-medium text-zinc-700">Closeouts</div>
+        <Link to="/closeouts" className="rounded-xl border border-zinc-200/80 bg-white px-4 py-3 hover:border-brand-orange hover:shadow-md transition-all group">
+          <div className="text-sm font-medium text-brand-navy group-hover:text-brand-orange">Closeouts</div>
           <div className="text-xs text-zinc-500">Last chance inventory</div>
         </Link>
-        <Link to="/watchlist" className="rounded-lg border border-zinc-200 bg-white px-4 py-3 hover:border-zinc-400 transition-colors">
-          <div className="text-sm font-medium text-zinc-700">My Order List</div>
+        <Link to="/watchlist" className="rounded-xl border border-zinc-200/80 bg-white px-4 py-3 hover:border-brand-orange hover:shadow-md transition-all group">
+          <div className="text-sm font-medium text-brand-navy group-hover:text-brand-orange">My Order List</div>
           <div className="text-xs text-zinc-500">Build your order</div>
         </Link>
       </div>

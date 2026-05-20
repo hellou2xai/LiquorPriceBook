@@ -108,7 +108,7 @@ function makeProductColumns(
       label: "Code",
       sortable: true,
       render: (r) => (
-        <Link to={`/catalog/${r.code}`} className="text-blue-600 hover:underline font-mono text-xs">
+        <Link to={`/catalog/${r.code}`} className="text-brand-navy hover:text-brand-orange hover:underline font-mono text-xs">
           {r.code}
         </Link>
       ),
@@ -243,7 +243,7 @@ function makeProductColumns(
     hideBelow: "lg",
     render: (r) =>
       r.tag ? (
-        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-zinc-100 text-zinc-600">
+        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-brand-navy/5 border border-brand-navy/10 text-brand-navy">
           {r.tag}
         </span>
       ) : null,
@@ -491,7 +491,7 @@ export default function Analytics() {
     <div className="space-y-5">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
         <div>
-          <h1 className="text-xl sm:text-2xl font-bold tracking-tight">Pricing Analytics</h1>
+          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-brand-navy">Pricing Analytics</h1>
           <p className="text-sm text-zinc-500 mt-1">
             Compare pricing across editions. Click an analysis to run it.
           </p>
@@ -513,7 +513,7 @@ export default function Analytics() {
             className={`text-left p-3 rounded-lg border transition-all ${
               activeView === v.view
                 ? `${v.color} ring-2 ring-offset-1 ring-current`
-                : "border-zinc-200 hover:border-zinc-300 hover:bg-zinc-50"
+                : "border-zinc-200 hover:border-zinc-300 hover:bg-brand-tan"
             }`}
           >
             <div className="flex items-center gap-2 mb-1">
@@ -533,9 +533,9 @@ export default function Analytics() {
           {/* Stats bar */}
           {stats && (
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <div className="rounded-lg border border-zinc-200 bg-white px-3 py-2">
+              <div className="rounded-xl shadow-sm border border-zinc-200 bg-white px-3 py-2">
                 <div className="text-xs text-zinc-500">Results</div>
-                <div className="text-lg font-semibold text-zinc-900">
+                <div className="text-lg font-semibold text-brand-navy">
                   {stats.shown}
                   {stats.shown !== stats.total && (
                     <span className="text-xs font-normal text-zinc-400"> / {stats.total}</span>
@@ -585,7 +585,7 @@ export default function Analytics() {
                 placeholder={isCategoryView ? "Search category..." : "Search SKU, description, brand..."}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="w-full sm:w-64 rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm placeholder:text-zinc-400 focus:border-zinc-900 focus:outline-none"
+                className="w-full sm:w-64 rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm placeholder:text-zinc-400 focus:border-brand-orange focus:outline-none"
               />
 
               {!isCategoryView && facets.categories.length > 1 && (
@@ -654,7 +654,7 @@ export default function Analytics() {
           )}
 
           {/* Table */}
-          <div className="bg-white border border-zinc-200 rounded-lg overflow-hidden">
+          <div className="bg-white border border-zinc-200 rounded-xl shadow-sm overflow-hidden">
             {isLoading && (
               <div className="p-8 text-center text-zinc-400">Loading analysis...</div>
             )}

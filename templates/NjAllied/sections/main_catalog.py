@@ -195,6 +195,7 @@ _MODIFIER_WORDS = {
     "MEZCAL", "BRANDY", "COGNAC", "RYE", "SCOTCH", "MALT", "BLEND",
     "BLANCO", "REPOSADO", "ANEJO", "SPICED", "GOLD", "SILVER", "PROOF",
     "BBN", "CASK", "BARREL", "STRAIGHT", "LIGHT", "DARK", "BLUE",
+    "BLACK", "PINK", "AMBER", "COPPER", "PLATINUM", "BRONZE",
     "VS", "VSOP", "XO", "RARE", "OLD", "NEW",
     # Wine varietals
     "CHARDONNAY", "CABERNET", "SAUVIGNON", "PINOT", "GRIGIO", "NOIR",

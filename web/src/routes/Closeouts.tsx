@@ -71,7 +71,7 @@ export default function Closeouts() {
       sortable: true,
       sortValue: (r) => r.code,
       render: (r) => (
-        <Link to={`/catalog/${r.code}`} className="font-mono text-xs hover:underline">{r.code}</Link>
+        <Link to={`/catalog/${r.code}`} className="font-mono text-xs text-brand-navy hover:text-brand-orange hover:underline">{r.code}</Link>
       ),
     },
     {
@@ -148,7 +148,7 @@ export default function Closeouts() {
   return (
     <div className="space-y-5">
       <header className="space-y-1">
-        <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">Closeouts</h1>
+        <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-brand-navy">Closeouts</h1>
         <p className="text-sm text-zinc-600">
           Inventory Reduction items — terminal listings, last chance to buy. {stats && `${stats.count} shown.`}
         </p>
@@ -168,16 +168,16 @@ export default function Closeouts() {
             <div className="text-xs text-zinc-500">Total Savings</div>
             <div className="text-lg font-semibold text-zinc-900">{money(stats.totalSave)}</div>
           </div>
-          <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
-            <div className="text-xs text-amber-600">New This Month</div>
-            <div className="text-lg font-semibold text-amber-800">{stats.newCount}</div>
+          <div className="rounded-lg border border-brand-orange/20 bg-brand-orange/10 px-3 py-2">
+            <div className="text-xs text-brand-orange">New This Month</div>
+            <div className="text-lg font-semibold text-brand-navy">{stats.newCount}</div>
           </div>
         </div>
       )}
 
       <div className="flex flex-col sm:flex-row flex-wrap gap-3 items-center">
         <input type="text" placeholder="Search SKU or description..." value={search} onChange={(e) => setSearch(e.target.value)}
-          className="w-full sm:w-64 rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm placeholder:text-zinc-400 focus:border-zinc-900 focus:outline-none" />
+          className="w-full sm:w-64 rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm placeholder:text-zinc-400 focus:border-brand-orange focus:outline-none" />
         <select value={daysFilter} onChange={(e) => setDaysFilter(e.target.value as "" | "new" | "aging")} className="rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-sm">
           <option value="">All items</option>
           <option value="new">New (30 days or less)</option>
@@ -190,7 +190,7 @@ export default function Closeouts() {
         </label>
       </div>
 
-      <div className="rounded-lg border border-zinc-200 bg-white overflow-hidden">
+      <div className="rounded-xl border border-zinc-200/80 bg-white overflow-hidden shadow-sm">
         {q.isLoading ? (
           <div className="text-center py-12 text-zinc-500">Loading...</div>
         ) : (

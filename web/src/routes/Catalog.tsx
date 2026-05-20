@@ -31,7 +31,7 @@ function FilterSection({
         onClick={() => setOpen(!open)}
         className="flex w-full items-center justify-between py-2 text-left"
       >
-        <span className="text-xs font-semibold uppercase tracking-wide text-zinc-700">
+        <span className="text-xs font-semibold uppercase tracking-wide text-brand-navy">
           {title}
           {count !== undefined && (
             <span className="ml-1.5 font-normal normal-case text-zinc-400">
@@ -68,12 +68,12 @@ function CheckItem({
   onChange: (v: boolean) => void;
 }) {
   return (
-    <label className="flex cursor-pointer items-center gap-2 rounded px-1 py-0.5 text-sm hover:bg-zinc-50">
+    <label className="flex cursor-pointer items-center gap-2 rounded px-1 py-0.5 text-sm hover:bg-brand-tan">
       <input
         type="checkbox"
         checked={checked}
         onChange={(e) => onChange(e.target.checked)}
-        className="h-3.5 w-3.5 rounded border-zinc-300 text-zinc-900 focus:ring-zinc-500"
+        className="h-3.5 w-3.5 rounded border-zinc-300 text-brand-orange focus:ring-brand-orange"
       />
       <span className="flex-1 truncate text-zinc-700">{label}</span>
       {count !== undefined && (
@@ -206,7 +206,7 @@ function FilterSidebar({
 
   return (
     <aside className="w-full space-y-1 md:pr-4">
-      <div className="flex items-center justify-between pb-2 border-b border-zinc-200">
+      <div className="flex items-center justify-between pb-2 border-b border-zinc-200/80 rounded-xl shadow-sm bg-white px-2 pt-2">
         <h2 className="text-sm font-bold text-zinc-800">Filters</h2>
         {activeCount > 0 && (
           <button
@@ -517,7 +517,7 @@ export default function Catalog() {
     <div className="space-y-5">
       <header className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
         <div className="space-y-1">
-          <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">Catalog</h1>
+          <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-brand-navy">Catalog</h1>
           <p className="text-sm text-zinc-600">
             {productsQ.data ? (
               <>
@@ -536,7 +536,7 @@ export default function Catalog() {
             onChange={(e) =>
               updateFilters({ ...filters, sort: e.target.value as SortKey })
             }
-            className="rounded-md border border-zinc-300 bg-white px-2.5 py-2 text-sm w-full sm:w-auto"
+            className="rounded-md border border-zinc-300 bg-white px-2.5 py-2 text-sm w-full sm:w-auto focus:border-brand-orange focus:outline-none"
           >
             <option value="name">Sort by name</option>
             <option value="case_cost_asc">Price (low to high)</option>
@@ -552,12 +552,12 @@ export default function Catalog() {
           placeholder="Search code, description, brand..."
           value={filters.search}
           onChange={(e) => setFilters({ ...filters, search: e.target.value })}
-          className="flex-1 rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm focus:border-zinc-900 focus:outline-none"
+          className="flex-1 rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm focus:border-brand-orange focus:outline-none"
         />
         {(filters.search || filters.categories.size > 0 || filters.brands.size > 0 || filters.divisions.size > 0 || filters.sizes.size > 0 || filters.hasRip !== null || filters.minPrice || filters.maxPrice) && (
           <button
             onClick={() => { updateFilters(EMPTY_FILTERS); }}
-            className="shrink-0 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-600 hover:bg-red-100"
+            className="shrink-0 rounded-md border border-brand-orange/30 bg-brand-orange/5 px-3 py-2 text-xs font-medium text-brand-orange hover:bg-brand-orange/10"
           >
             Clear all
           </button>
@@ -598,7 +598,7 @@ export default function Catalog() {
           <div className="rounded-lg border border-zinc-200 bg-white overflow-hidden">
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-zinc-200 text-sm">
-                <thead className="bg-zinc-50 text-left text-xs uppercase tracking-wide text-zinc-500">
+                <thead className="bg-brand-tan text-left text-xs uppercase tracking-wide text-zinc-500">
                   <tr>
                     <th className="px-3 py-2 w-8" />
                     <th className="px-3 py-2">Code</th>
@@ -636,7 +636,7 @@ export default function Catalog() {
                     </tr>
                   ) : (
                     productsQ.data?.items.map((p) => (
-                      <tr key={p.code} className="hover:bg-zinc-50">
+                      <tr key={p.code} className="hover:bg-brand-tan">
                         <td className="px-3 py-2">
                           <FavoriteButton
                             code={p.code}
@@ -648,7 +648,7 @@ export default function Catalog() {
                         <td className="px-3 py-2 font-mono text-xs">
                           <Link
                             to={`/catalog/${p.code}`}
-                            className="text-zinc-700 hover:text-zinc-900 hover:underline"
+                            className="text-brand-navy hover:text-brand-orange hover:underline"
                           >
                             {p.code}
                           </Link>
@@ -692,7 +692,7 @@ export default function Catalog() {
             </div>
 
             {/* Pagination */}
-            <div className="flex items-center justify-between px-4 py-3 border-t border-zinc-200 bg-zinc-50 text-sm">
+            <div className="flex items-center justify-between px-4 py-3 border-t border-zinc-200 bg-brand-tan text-sm">
               <div className="text-zinc-600">
                 Page {page + 1} of {lastPage + 1} &middot;{" "}
                 {total.toLocaleString()} total

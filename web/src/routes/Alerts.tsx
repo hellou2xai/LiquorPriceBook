@@ -43,7 +43,7 @@ export default function Alerts() {
       sortable: true,
       sortValue: (a) => a.rule_type,
       render: (a) => (
-        <span className={`inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium ${RULE_TONE[a.rule_type] ?? "bg-zinc-50 border-zinc-200 text-zinc-700"}`}>
+        <span className={`inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium ${RULE_TONE[a.rule_type] ?? "bg-brand-navy/5 border-brand-navy/10 text-brand-navy"}`}>
           {RULE_LABELS[a.rule_type] ?? a.rule_type}
         </span>
       ),
@@ -56,7 +56,7 @@ export default function Alerts() {
       sortValue: (a) => a.product_code ?? "",
       render: (a) =>
         a.product_code ? (
-          <Link to={`/catalog/${a.product_code}`} className="font-mono text-xs hover:underline">{a.product_code}</Link>
+          <Link to={`/catalog/${a.product_code}`} className="font-mono text-xs text-brand-navy hover:text-brand-orange hover:underline">{a.product_code}</Link>
         ) : (
           <span className="text-zinc-300 text-xs">{"\u2014"}</span>
         ),
@@ -93,13 +93,13 @@ export default function Alerts() {
   return (
     <div className="space-y-5">
       <header className="space-y-1">
-        <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">Alerts</h1>
+        <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-brand-navy">Alerts</h1>
         <p className="text-sm text-zinc-600">
           Fired by the rules engine at the end of every successful ingest.
         </p>
       </header>
 
-      <div className="rounded-lg border border-zinc-200 bg-white overflow-hidden">
+      <div className="rounded-xl shadow-sm border border-zinc-200 bg-white overflow-hidden">
         {q.isLoading ? (
           <div className="text-center py-12 text-zinc-500">Loading...</div>
         ) : (
