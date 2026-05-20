@@ -93,9 +93,9 @@ _COUNTRY_REGION_WORDS = {
     "GUATEMALA", "NICARAGUA", "PANAMA", "DOMINICAN REPUBLIC",
     "SLOVAKIA", "ROMANIA",
     # US States / Regions
-    "CALIFORNIA", "OREGON", "WASHINGTON", "NEW YORK", "VIRGINIA",
-    "PENNSYLVANIA", "TEXAS", "KENTUCKY", "TENNESSEE", "COLORADO",
-    "MICHIGAN", "NORTH CAROLINA",
+    "CALIFORNIA", "OREGON", "WASHINGTON", "NEW YORK", "NEW JERSEY",
+    "VIRGINIA", "PENNSYLVANIA", "TEXAS", "KENTUCKY", "TENNESSEE",
+    "COLORADO", "MICHIGAN", "NORTH CAROLINA",
     # Wine sub-regions
     "NAPA VALLEY", "SONOMA", "RUSSIAN RIVER VALLEY", "PASO ROBLES",
     "NORTH COAST", "CENTRAL COAST", "SANTA BARBARA", "WILLAMETTE VALLEY",
@@ -327,6 +327,40 @@ _MODIFIER_WORDS = {
 }
 
 
+# Product descriptor words — lines made entirely of these are descriptions,
+# not brands, even when short and uppercase.
+_PRODUCT_DESC_WORDS = {
+    # Spirits types / styles
+    "VODKA", "GIN", "RUM", "TEQUILA", "MEZCAL", "WHISKEY", "WHISKY",
+    "BOURBON", "BRANDY", "COGNAC", "SCOTCH", "LIQUEUR", "CORDIAL",
+    "ABSINTHE", "APERITIF", "GRAPPA", "SCHNAPPS",
+    # Tequila variants
+    "BLANCO", "REPOSADO", "ANEJO", "CRISTALINO", "JOVEN", "PLATA",
+    "EXTRA", "GRAN", "RESERVA",
+    # Rum variants
+    "SPICED", "DARK", "LIGHT", "GOLD", "WHITE", "COCONUT", "PINEAPPLE",
+    "MANGO", "PASSION", "FRUIT", "CARIBBEAN", "OVERPROOF",
+    # Vodka flavors
+    "CITRON", "CITRUS", "RASPBERRY", "STRAWBERRY", "WATERMELON",
+    "VANILLA", "CHERRY", "GRAPE", "APPLE", "GRAPEFRUIT", "CRANBERRY",
+    "ESPRESSO", "COFFEE", "HONEY", "CUCUMBER", "BLUEBERRY",
+    "BLACKBERRY", "PRICKLY", "PEAR", "PEACH", "LIME", "LEMON",
+    "ORANGE", "TROPICAL", "BERRY", "MINT", "MENTHOL",
+    # Wine varietals
+    "CABERNET", "SAUVIGNON", "CHARDONNAY", "PINOT", "NOIR", "GRIGIO",
+    "MERLOT", "ZINFANDEL", "SYRAH", "SHIRAZ", "MALBEC", "RIESLING",
+    "MOSCATO", "PROSECCO", "ROSE", "BRUT", "BLANC", "ROUGE",
+    "VIOGNIER", "TEMPRANILLO", "VERDEJO", "SANGIOVESE", "NEBBIOLO",
+    "BAROLO", "CHIANTI", "BRUNELLO", "AMARONE", "VALPOLICELLA",
+    "BARBARESCO", "CUVEE", "SEC", "DEMI", "IMPERIAL",
+    # Wine regions that appear in product names
+    "NAPA", "SONOMA", "RESERVE", "TABLE", "WINE",
+    # Modifiers
+    "RTD", "PET", "CINNAMON", "CARAMEL", "SALTED", "FIRE",
+    "COSMOPOLITAN", "MARGARITA", "MARTINI", "PALOMA", "SPRITZ",
+}
+
+
 # --------------------------------------------------------------------------
 # Line classification
 # --------------------------------------------------------------------------
@@ -383,29 +417,22 @@ def _classify_line(text: str) -> str:
         non_attr = [w for w in words if w not in _ATTRIB_TOKENS]
 
         # Has attribute tokens (F, LA, GP, JNC, SC) → definite brand
+        # But skip footer/boilerplate lines that happen to contain tokens
         if non_attr and attr_count > 0:
+            core = " ".join(non_attr).lower()
+            if any(kw in core for kw in ("organic", "kosher", "assorts",
+                                          "items with", "company are",
+                                          "off prem", "sales company",
+                                          "attributes", "screw cap",
+                                          "gluten free")):
+                return "skip"
             return "brand"
 
         # Short, all-uppercase text with no size/proof keywords → maybe brand
-        # Real brands usually have attribute tokens (F, LA, GP, JNC, SC).
-        # Lines without attributes that look like brands ("NOVA SINGLE MALT WHISKY",
-        # "CASK WHISKEY", "TOASTED CARAMEL WHISKEY") are almost always sub-brand
-        # descriptions in Fedway's layout. Return "maybe_brand" so the lane parser
-        # can decide based on context (whether a brand is already set).
-        if (
-            stripped.isupper()
-            and len(words) <= 4
-            and len(stripped) <= 35
-            and not re.search(r"\b(ML|LT|OZ|PK|PF|COMBO|CONTAINS|PACK)\b", stripped)
-            and "(" not in stripped
-            and stripped.upper() not in _CATEGORY_WORDS
-            and stripped.upper() not in _COUNTRY_REGION_WORDS
-            and stripped.upper() not in _SUBCATEGORY_WORDS
-            and not all(w.upper() in _MODIFIER_WORDS for w in words)
-        ):
-            return "maybe_brand"
-
-        # Pure text line — description
+        # In Fedway's layout, brands ALWAYS have division/attribute tokens
+        # (F, LA, GP, JNC, SC) on the right side. Lines without these tokens
+        # are always descriptions — even short uppercase ones like "STARWARD",
+        # "VODKA", "CANADIAN WHISKEY". No need for maybe_brand heuristics.
         return "description"
 
     # Combo savings line
@@ -546,20 +573,20 @@ def _parse_rip_line(text: str) -> list[dict]:
 
 
 def _extract_brand(text: str) -> str | None:
-    """Try to extract a brand name from brand/description text.
+    """Extract brand name from a brand line.
 
-    Strips attribute tokens (F, LA, GP, JNC, SC) and modifier words.
-    Returns None if everything gets stripped.
+    Only strips attribute tokens (F, LA, GP, JNC, SC) and articles.
+    Does NOT strip modifier words — "BLACK VELVET", "CANADIAN CLUB",
+    "CROWN ROYAL" must be preserved intact.
     """
     words = text.strip().split()
     # Remove trailing attribute tokens
     while words and words[-1].upper() in _ATTRIB_TOKENS:
         words.pop()
-    # Remove leading/trailing modifier words
-    while words and words[0].upper() in _MODIFIER_WORDS:
+    # Only strip articles/prepositions from the front, not brand-name words
+    _STRIP_LEADING = {"THE", "OF", "AND", "FROM", "WITH", "FOR", "BY"}
+    while words and words[0].upper() in _STRIP_LEADING:
         words.pop(0)
-    while words and words[-1].upper() in _MODIFIER_WORDS:
-        words.pop()
 
     if not words:
         return None
@@ -657,13 +684,17 @@ def _parse_lane(
     lane_idx: int,
     source: str,
     section_name: str,
+    initial_brand: str | None = None,
+    initial_category: str | None = None,
+    initial_country: str | None = None,
+    initial_region: str | None = None,
 ) -> list[dict]:
     """Parse one column lane's lines into product rows."""
     products = []
-    current_category = _resolve_fedway_category(section_name, None, None) or section_name
-    current_country = None
-    current_region = None
-    current_brand = None
+    current_category = initial_category or _resolve_fedway_category(section_name, None, None) or section_name
+    current_country = initial_country
+    current_region = initial_region
+    current_brand = initial_brand
     current_description = None
     last_description = None  # Carries forward for size-variant items with no own description
     current_item = None
@@ -809,7 +840,11 @@ def _parse_lane(
                 continue
             _flush()
             last_description = None
+            current_description = None
             if upper in _CATEGORY_WORDS:
+                if upper != current_category:
+                    # Genuinely new category → reset brand
+                    current_brand = None
                 current_category = upper
                 current_country = None
                 current_region = None
@@ -828,6 +863,9 @@ def _parse_lane(
                     "ISRAEL", "LEBANON", "TURKEY", "MOROCCO", "THAILAND",
                     "PHILIPPINES", "PUERTO RICO", "WALES",
                 }:
+                    if upper != current_country:
+                        # New country → new brands expected
+                        current_brand = None
                     current_country = upper
                     current_region = None
                 else:
@@ -838,32 +876,6 @@ def _parse_lane(
             current_brand = _extract_brand(text)
             current_description = None
             last_description = None
-
-        elif line_type == "maybe_brand":
-            # Short uppercase text without attribute tokens.
-            # If we already have a brand, this is a sub-brand description.
-            # If no brand yet, treat as a brand.
-            if current_brand is not None:
-                # Treat as description
-                if saw_price_after_item:
-                    _flush()
-                    saw_price_after_item = False
-                    current_description = text.strip()
-                elif current_item is not None:
-                    if current_description:
-                        current_description += " " + text.strip()
-                    else:
-                        current_description = text.strip()
-                else:
-                    if current_description:
-                        current_description += " " + text.strip()
-                    else:
-                        current_description = text.strip()
-            else:
-                _flush()
-                current_brand = _extract_brand(text)
-                current_description = None
-                last_description = None
 
         elif line_type == "item":
             _flush()
@@ -906,7 +918,13 @@ def _parse_lane(
     # Flush last product
     _flush()
 
-    return products
+    # Return products and ending context for lane continuity
+    return products, {
+        "brand": current_brand,
+        "category": current_category,
+        "country": current_country,
+        "region": current_region,
+    }
 
 
 # --------------------------------------------------------------------------
@@ -929,6 +947,9 @@ def parse_main_catalog(
         List of product dicts compatible with the pipeline's main_catalog format.
     """
     all_products = []
+    # Track ending context from the previous lane for continuity.
+    # Content flows: lane 0 → lane 1 → lane 2 → next page lane 0 → ...
+    carry_ctx: dict | None = None
 
     for page in pages:
         page_num = page.page_number
@@ -948,8 +969,12 @@ def parse_main_catalog(
             if not lw:
                 continue
             lines = _reconstruct_lines(lw)
-            products = _parse_lane(
+            products, carry_ctx = _parse_lane(
                 lines, page_num, lane_idx, source, section_name,
+                initial_brand=carry_ctx.get("brand") if carry_ctx else None,
+                initial_category=carry_ctx.get("category") if carry_ctx else None,
+                initial_country=carry_ctx.get("country") if carry_ctx else None,
+                initial_region=carry_ctx.get("region") if carry_ctx else None,
             )
             all_products.extend(products)
 

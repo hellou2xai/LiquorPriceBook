@@ -39,6 +39,11 @@ ISSUE_PRICE_PERIOD_IN_DESC = "price_period_in_description"
 ISSUE_OCR_IN_DESC = "ocr_noise_in_description"
 ISSUE_MISSING_SIZE = "missing_size"
 ISSUE_MISSING_CODE = "missing_code"
+ISSUE_BRAND_TRUNCATED = "brand_truncated"
+ISSUE_BRAND_IS_OCR = "brand_is_ocr_noise"
+ISSUE_BRAND_BLEED = "brand_bleed_suspected"
+ISSUE_PRICE_VS_PACK = "price_pack_mismatch"
+ISSUE_CODE_FORMAT = "invalid_code_format"
 
 
 # ── Checks ───────────────────────────────────────────────────────────────
@@ -56,6 +61,46 @@ _DESC_MARKER_WORDS = {
     "SAUVIGNON", "MERLOT", "SYRAH", "ZINFANDEL", "RIESLING",
     "PROSECCO", "BRUT", "CUVEE", "NOIR", "GRIGIO",
 }
+
+# Known single words that usually indicate a truncated brand name
+_TRUNCATED_BRAND_WORDS = {
+    "VELVET", "CANADIAN", "CLUB", "ROYAL", "TURKEY", "GOOSE", "BEAM",
+    "DANIEL", "DANIELS", "WALKER", "LABEL", "HORSE", "NECK", "BULL",
+    "MONK", "HARBOR", "COMFORT", "RUSSIA", "STAG", "EAGLE", "RARE",
+    "MAKER", "MAKERS", "KNOB", "CREEK", "WOODFORD", "RESERVE",
+    "FORESTER", "GROUSE",
+}
+
+# OCR noise detection patterns for brand names
+_BRAND_OCR_DOLLAR = re.compile(r"\$")
+_BRAND_OCR_SPACED = re.compile(r"^([A-Z]\s){3,}")  # spaced-out single letters
+_BRAND_OCR_DIGIT_ALPHA_MIX = re.compile(r"[A-Z]\d[A-Z]|[0-9]{2,}[A-Z]|[A-Z][0-9]{2,}[A-Z]")
+_BRAND_MOSTLY_NON_ALPHA = re.compile(r"[^A-Za-z\s]")
+
+# Code format: 4-9 digits, possibly with leading zeros
+_VALID_CODE_RE = re.compile(r"^\d{4,9}$")
+
+# Well-known multi-word brand names (used for brand bleed detection)
+_KNOWN_BRANDS = {
+    "JACK DANIELS", "JACK DANIEL'S", "JOHNNY WALKER", "JOHNNIE WALKER",
+    "MAKERS MARK", "MAKER'S MARK", "WILD TURKEY", "GREY GOOSE",
+    "BLACK VELVET", "CANADIAN CLUB", "CROWN ROYAL", "JIM BEAM",
+    "WOODFORD RESERVE", "KNOB CREEK", "OLD FORESTER", "FAMOUS GROUSE",
+    "BUFFALO TRACE", "ANGELS ENVY", "ANGEL'S ENVY", "HENNESSY",
+    "UNCLE NEAREST", "BULLEIT", "FOUR ROSES", "STARWARD",
+    "MONKEY SHOULDER", "GLENLIVET", "GLENFIDDICH", "MACALLAN",
+    "PATRON", "DON JULIO", "CASAMIGOS", "TITOS", "TITO'S",
+    "ABSOLUT", "SMIRNOFF", "KETEL ONE", "BELVEDERE", "CIROC",
+    "BACARDI", "CAPTAIN MORGAN", "MALIBU", "TANQUERAY", "BOMBAY",
+    "HENDRICKS", "HENDRICK'S", "JAMESON", "BUSHMILLS", "TULLAMORE",
+}
+
+# Single-word tokens from known brands (for detecting bleed candidates in descriptions)
+_KNOWN_BRAND_TOKENS = set()
+for _b in _KNOWN_BRANDS:
+    for _w in _b.replace("'", "").split():
+        if len(_w) > 3:  # skip short words like "OLD", "DON"
+            _KNOWN_BRAND_TOKENS.add(_w.upper())
 
 
 def _check_product(product: dict) -> list[dict]:
@@ -148,6 +193,89 @@ def _check_product(product: dict) -> list[dict]:
     if not size:
         _issue(ISSUE_MISSING_SIZE, "No size extracted", "warning")
 
+    # 10. Brand truncated — single word that's a known truncation artifact
+    if brand.strip():
+        brand_upper = brand.strip().upper()
+        brand_tokens = brand_upper.split()
+        if len(brand_tokens) == 1 and brand_tokens[0] in _TRUNCATED_BRAND_WORDS:
+            _issue(ISSUE_BRAND_TRUNCATED,
+                   f"Brand '{brand}' is a single word likely truncated from a longer name",
+                   "warning")
+
+    # 11. Brand is OCR noise
+    if brand.strip():
+        brand_stripped = brand.strip()
+        alpha_chars = sum(1 for c in brand_stripped if c.isalpha())
+        total_chars = len(brand_stripped.replace(" ", ""))
+        is_ocr = False
+        ocr_reason = ""
+        if _BRAND_OCR_DOLLAR.search(brand_stripped):
+            is_ocr = True
+            ocr_reason = "contains dollar sign"
+        elif _BRAND_OCR_SPACED.search(brand_stripped):
+            is_ocr = True
+            ocr_reason = "spaced-out single letters (OCR artifact)"
+        elif _BRAND_OCR_DIGIT_ALPHA_MIX.search(brand_stripped):
+            is_ocr = True
+            ocr_reason = "unnatural digit/letter mix"
+        elif total_chars > 0 and alpha_chars / total_chars < 0.5:
+            is_ocr = True
+            ocr_reason = f"mostly non-alpha ({alpha_chars}/{total_chars} alpha chars)"
+        if is_ocr:
+            _issue(ISSUE_BRAND_IS_OCR,
+                   f"Brand '{brand}' appears to be OCR noise: {ocr_reason}",
+                   "warning")
+
+    # 12. Brand bleed — brand appears in description alongside a different brand name
+    if brand.strip() and desc.strip():
+        desc_upper = desc.strip().upper()
+        brand_upper = brand.strip().upper()
+        if brand_upper in desc_upper:
+            # Look for capitalized multi-word sequences in the description
+            # that differ from the brand and could be another brand
+            remaining = desc_upper.replace(brand_upper, "", 1).strip()
+            # Check if any known brand token appears in the remaining text
+            remaining_words = set(remaining.split())
+            suspect_tokens = remaining_words & _KNOWN_BRAND_TOKENS
+            # Filter out tokens that are part of the current brand
+            brand_word_set = set(brand_upper.split())
+            suspect_tokens -= brand_word_set
+            if suspect_tokens:
+                _issue(ISSUE_BRAND_BLEED,
+                       f"Brand '{brand}' in desc with other brand tokens: {suspect_tokens}",
+                       "warning")
+
+    # 13. Price vs pack mismatch
+    pack = product.get("pack")
+    if case_cost is not None and btl_cost is not None:
+        try:
+            cc = float(str(case_cost))
+            bc = float(str(btl_cost))
+            if bc > 0 and cc < bc:
+                _issue(ISSUE_PRICE_VS_PACK,
+                       f"Case cost ${cc:.2f} < bottle cost ${bc:.2f}",
+                       "warning")
+            if pack is not None and bc > 0:
+                pk = int(str(pack))
+                if pk > 0:
+                    implied_btl = cc / pk
+                    ratio = implied_btl / bc if bc > 0 else 0
+                    if ratio < 0.5 or ratio > 1.5:
+                        _issue(ISSUE_PRICE_VS_PACK,
+                               f"case/pack=${implied_btl:.2f} vs btl=${bc:.2f} "
+                               f"(ratio {ratio:.2f}, pack={pk}) — exceeds 50% tolerance",
+                               "warning")
+        except (ValueError, TypeError, ZeroDivisionError):
+            pass
+
+    # 14. Invalid code format
+    code_str = str(code).strip() if code else ""
+    if code_str and code_str != "?":
+        if not _VALID_CODE_RE.match(code_str):
+            _issue(ISSUE_CODE_FORMAT,
+                   f"Code '{code_str}' is not 4-9 digits",
+                   "warning")
+
     return issues
 
 
@@ -183,6 +311,107 @@ def _check_page_duplicates(products: list[dict]) -> list[dict]:
     return issues
 
 
+def _check_brand_consistency(products: list[dict]) -> list[dict]:
+    """Cross-product brand consistency checks.
+
+    Groups products by brand_header per page/lane and flags:
+    - Same brand with wildly different description prefixes (brand bleed)
+    - A brand appearing on only 1 product on a page that matches a well-known
+      brand name used elsewhere in the catalog
+    """
+    issues = []
+
+    # Group by (page, lane, brand_header)
+    by_page_lane_brand: dict[tuple, list[dict]] = defaultdict(list)
+    # Track global brand usage counts
+    global_brand_counts: Counter = Counter()
+    for p in products:
+        brand = (p.get("brand_header") or "").strip()
+        if not brand:
+            continue
+        key = (p.get("page", "?"), p.get("lane", "?"), brand)
+        by_page_lane_brand[key].append(p)
+        global_brand_counts[brand.upper()] += 1
+
+    # All brands used across the entire catalog (for singleton comparison)
+    all_brands_upper = set(global_brand_counts.keys())
+
+    for (page, lane, brand), prods in by_page_lane_brand.items():
+        # --- Check 1: Divergent description prefixes under same brand ---
+        if len(prods) >= 2:
+            prefixes = []
+            for p in prods:
+                desc = (p.get("sub_brand") or "").strip().upper()
+                # Use the first two words as the prefix
+                words = desc.split()[:2]
+                prefix = " ".join(words) if words else ""
+                prefixes.append(prefix)
+
+            unique_prefixes = set(pf for pf in prefixes if pf)
+            # If there are many different prefixes relative to the product count,
+            # and at least one prefix doesn't start with the brand, flag it
+            if len(unique_prefixes) >= 2:
+                brand_upper = brand.upper()
+                non_matching = [
+                    pf for pf in unique_prefixes
+                    if not pf.startswith(brand_upper.split()[0]) and pf != brand_upper
+                ]
+                if non_matching and len(non_matching) >= len(unique_prefixes) * 0.5:
+                    for p in prods:
+                        desc = (p.get("sub_brand") or "").strip().upper()
+                        desc_prefix = " ".join(desc.split()[:2])
+                        if desc_prefix in non_matching:
+                            issues.append({
+                                "code": p.get("code", "?"),
+                                "page": page,
+                                "lane": lane,
+                                "category": ISSUE_BRAND_BLEED,
+                                "severity": "warning",
+                                "detail": (
+                                    f"Brand '{brand}' has divergent desc prefix "
+                                    f"'{desc_prefix}' vs other products under same brand"
+                                ),
+                                "brand": brand,
+                                "description": (p.get("sub_brand") or "")[:80],
+                                "case_cost": str(p.get("case_cost", "")),
+                            })
+
+        # --- Check 2: Singleton brand on a page that matches a known brand elsewhere ---
+        if len(prods) == 1:
+            brand_upper = brand.upper()
+            # Check if this brand name is a well-known brand used elsewhere
+            # (i.e., it appears on other pages too, but only once on this page —
+            # could be a bleed from an adjacent column)
+            if brand_upper in all_brands_upper and global_brand_counts[brand_upper] > 1:
+                # Only flag if there are OTHER brands on this same page/lane
+                same_page_brands = [
+                    k[2] for k in by_page_lane_brand
+                    if k[0] == page and k[1] == lane and k[2] != brand
+                ]
+                if same_page_brands:
+                    p = prods[0]
+                    desc = (p.get("sub_brand") or "").strip().upper()
+                    # Check if the description doesn't start with this brand
+                    if desc and not desc.startswith(brand_upper.split()[0]):
+                        issues.append({
+                            "code": p.get("code", "?"),
+                            "page": page,
+                            "lane": lane,
+                            "category": ISSUE_BRAND_BLEED,
+                            "severity": "warning",
+                            "detail": (
+                                f"Brand '{brand}' has only 1 product on page {page} "
+                                f"but {global_brand_counts[brand_upper]} total — "
+                                f"possible bleed from adjacent brand"
+                            ),
+                            "brand": brand,
+                            "description": (p.get("sub_brand") or "")[:80],
+                            "case_cost": str(p.get("case_cost", "")),
+                        })
+
+    return issues
+
+
 # ── Main ─────────────────────────────────────────────────────────────────
 
 def validate(pdf_path: Path, distributor: str, page_filter: int | None = None) -> list[dict]:
@@ -211,6 +440,9 @@ def validate(pdf_path: Path, distributor: str, page_filter: int | None = None) -
 
     # Cross-product checks (duplicate descriptions)
     all_issues.extend(_check_page_duplicates(products))
+
+    # Cross-product checks (brand consistency)
+    all_issues.extend(_check_brand_consistency(products))
 
     return all_issues
 
