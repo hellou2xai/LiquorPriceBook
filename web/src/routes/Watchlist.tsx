@@ -449,8 +449,13 @@ export default function Watchlist() {
       const qty = cart.get(item.product_code);
       if (!qty || qty.bottles + qty.cases === 0) continue;
       totalItems += qty.bottles + qty.cases;
-      const btlPrice = parseFloat(item.effective_btl ?? item.btl_cost ?? "0");
-      const casePrice = parseFloat(item.effective_case ?? item.case_cost ?? "0");
+      // Use qualifying RIP tier price based on cart cases
+      const rips = item.all_rips ?? [];
+      const qualified = qty.cases > 0
+        ? [...rips].reverse().find((r) => qty.cases >= r.tier_cases)
+        : null;
+      const casePrice = qualified ? parseFloat(qualified.effective_case ?? item.case_cost ?? "0") : parseFloat(item.case_cost ?? "0");
+      const btlPrice = qualified ? parseFloat(qualified.effective_btl ?? item.btl_cost ?? "0") : parseFloat(item.btl_cost ?? "0");
       const lineCost = qty.bottles * btlPrice + qty.cases * casePrice;
       totalCost += lineCost;
       const cat = item.category_display ?? "Uncategorized";
@@ -693,6 +698,17 @@ export default function Watchlist() {
           </div>
         </td>
 
+        {/* Line Total */}
+        <td className="px-2 py-2 text-right tabular-nums hidden sm:table-cell">
+          {(() => {
+            if (qty.bottles + qty.cases === 0) return <span className="text-zinc-300 text-xs">{"\u2014"}</span>;
+            const caseP = qualifiedRip ? parseFloat(qualifiedRip.effective_case ?? "0") : parseFloat(item.case_cost ?? "0");
+            const btlP = qualifiedRip ? parseFloat(qualifiedRip.effective_btl ?? item.btl_cost ?? "0") : parseFloat(item.btl_cost ?? "0");
+            const total = qty.cases * caseP + qty.bottles * btlP;
+            return <span className="font-medium text-xs">{money(total.toFixed(2))}</span>;
+          })()}
+        </td>
+
         {/* Add to Order */}
         <td className="px-2 py-2">
           <AddToOrderButton
@@ -746,7 +762,7 @@ export default function Watchlist() {
             )}
           </td>
           {/* Target, Note, Qty, Add to Order — empty for sub-rows */}
-          <td className="px-2 py-1.5" colSpan={4}></td>
+          <td className="px-2 py-1.5" colSpan={5}></td>
         </tr>
       );
     });
@@ -754,7 +770,7 @@ export default function Watchlist() {
     return <>{mainRow}{tierRows}</>;
   }
 
-  const COL_SPAN = 15;
+  const COL_SPAN = 16;
 
   return (
     <div className="space-y-4">
@@ -909,6 +925,7 @@ export default function Watchlist() {
                 <th className="px-2 py-2 text-right hidden lg:table-cell">Target</th>
                 <th className="px-2 py-2 hidden lg:table-cell">Note</th>
                 <th className="px-2 py-2 text-center">Qty</th>
+                <th className="px-2 py-2 text-right hidden sm:table-cell">Line Total</th>
                 <th className="px-2 py-2"></th>
               </tr>
             </thead>
@@ -937,6 +954,19 @@ export default function Watchlist() {
                 items.map(renderRow)
               )}
             </tbody>
+            {summary.totalItems > 0 && (
+              <tfoot>
+                <tr className="bg-brand-tan font-medium text-sm border-t-2 border-zinc-300">
+                  <td colSpan={13} className="px-2 py-3 text-right">
+                    Order Total ({summary.totalItems} item{summary.totalItems === 1 ? "" : "s"})
+                  </td>
+                  <td className="px-2 py-3 text-right tabular-nums hidden sm:table-cell text-brand-navy">
+                    {money(summary.totalCost.toFixed(2))}
+                  </td>
+                  <td colSpan={2}></td>
+                </tr>
+              </tfoot>
+            )}
           </table>
         </div>
 
