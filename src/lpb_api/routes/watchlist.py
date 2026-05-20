@@ -40,7 +40,7 @@ from lpb_core.db.models import (
 )
 
 from .auth import get_current_user
-from .catalog import _current_edition, _current_edition_ids
+from .catalog import _current_edition_ids
 
 router = APIRouter(tags=["watchlist"])
 
