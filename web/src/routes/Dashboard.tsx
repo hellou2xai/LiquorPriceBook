@@ -114,7 +114,7 @@ export default function Dashboard() {
           <KpiCard label="Closeouts" value={s.total_closeouts} accent="amber" sub="last chance items" />
           <KpiCard label="Price Drops" value={s.products_price_down} accent="emerald" sub="vs last month" />
           <KpiCard label="Price Increases" value={s.products_price_up} accent="red" sub="vs last month" />
-          <KpiCard label="Your Watchlist" value={s.watchlist_count} accent="sky"
+          <KpiCard label="Your Order List" value={s.watchlist_count} accent="sky"
             sub={s.watchlist_buy_now > 0 ? `${s.watchlist_buy_now} buy-now signals!` : "items tracked"} />
         </div>
       )}
@@ -124,7 +124,7 @@ export default function Dashboard() {
         <div className="rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-3 flex items-center justify-between">
           <div>
             <p className="text-sm font-medium text-emerald-800">
-              {s.watchlist_buy_now} watchlist item{s.watchlist_buy_now > 1 ? "s" : ""} have BUY NOW signals
+              {s.watchlist_buy_now} order list item{s.watchlist_buy_now > 1 ? "s" : ""} have BUY NOW signals
             </p>
             <p className="text-xs text-emerald-600 mt-0.5">These products are at favorable pricing — act before the next edition.</p>
           </div>
@@ -145,9 +145,9 @@ export default function Dashboard() {
           emptyHint="No price drops this month."
         />
 
-        {/* Your Watchlist Movers */}
+        {/* Your Order List Movers */}
         <MoverPanel
-          title="Your Watchlist Movers"
+          title="Your Order List Movers"
           subtitle="Price changes on your tracked products."
           rows={wlMoversQ.data}
           loading={wlMoversQ.isLoading}

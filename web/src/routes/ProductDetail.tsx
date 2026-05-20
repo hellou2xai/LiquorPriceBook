@@ -89,7 +89,7 @@ export default function ProductDetail() {
               disabled={removeWatch.isPending}
               className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm hover:bg-zinc-50 disabled:opacity-50"
             >
-              Remove from watchlist
+              Remove from order list
             </button>
           ) : (
             <button
@@ -97,7 +97,7 @@ export default function ProductDetail() {
               disabled={addWatch.isPending}
               className="rounded-md bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-60"
             >
-              Add to watchlist
+              Add to order list
             </button>
           )}
         </div>

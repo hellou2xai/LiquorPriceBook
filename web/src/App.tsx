@@ -21,7 +21,7 @@ const NAV = [
   { to: "/rips", label: "RIPs" },
   { to: "/closeouts", label: "Closeouts" },
   { to: "/combos", label: "Combos" },
-  { to: "/watchlist", label: "Watchlist" },
+  { to: "/watchlist", label: "Order List" },
   { to: "/alerts", label: "Alerts" },
 ];
 

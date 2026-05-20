@@ -236,7 +236,7 @@ def watchlist_order(
         .select_from(WatchlistItem)
         .join(Watchlist, Watchlist.id == WatchlistItem.watchlist_id)
         .join(Product, Product.id == WatchlistItem.product_id)
-        .join(
+        .outerjoin(
             ProductEdition,
             and_(
                 ProductEdition.product_id == Product.id,
