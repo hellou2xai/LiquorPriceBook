@@ -21,6 +21,7 @@ from lpb_api.routes import catalog as catalog_routes
 from lpb_api.routes import ingest as ingest_routes
 from lpb_api.routes import insights as insights_routes
 from lpb_api.routes import orders as orders_routes
+from lpb_api.routes import sales_reps as sales_reps_routes
 from lpb_api.routes import specials as specials_routes
 from lpb_api.routes import watchlist as watchlist_routes
 from lpb_core.settings import settings
@@ -158,6 +159,7 @@ app.include_router(specials_routes.router)
 app.include_router(orders_routes.router)
 app.include_router(ai_routes.router)
 app.include_router(analytics_routes.router)
+app.include_router(sales_reps_routes.router)
 
 # Later routers (admin tools for AI-C alert configs) will land here:
 # from lpb_api.routes import catalog, watchlists, alerts, ingest

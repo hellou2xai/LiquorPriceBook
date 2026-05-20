@@ -683,3 +683,35 @@ export const analyticsApi = {
   query: (view: AnalyticsView, limit = 100) =>
     api<AnalyticsResponse>(`/api/v1/analytics${_qs({ view, limit })}`),
 };
+
+// ---------- Sales Reps ----------
+
+export type SalesRepOut = {
+  id: string;
+  name: string;
+  email: string;
+  phone: string | null;
+  division: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type EmailData = {
+  to: string;
+  subject: string;
+  body: string;
+};
+
+export const salesRepsApi = {
+  list: (division?: string) =>
+    api<SalesRepOut[]>(`/api/v1/sales-reps${_qs({ division })}`),
+  create: (body: { name: string; email: string; phone?: string; division?: string; notes?: string }) =>
+    api<SalesRepOut>("/api/v1/sales-reps", { method: "POST", json: body }),
+  update: (id: string, body: { name?: string; email?: string; phone?: string; division?: string; notes?: string }) =>
+    api<SalesRepOut>(`/api/v1/sales-reps/${id}`, { method: "PATCH", json: body }),
+  remove: (id: string) =>
+    api<void>(`/api/v1/sales-reps/${id}`, { method: "DELETE" }),
+  generateEmail: (orderId: string, repId?: string) =>
+    api<EmailData>(`/api/v1/orders/${orderId}/email${_qs({ rep_id: repId })}`),
+};

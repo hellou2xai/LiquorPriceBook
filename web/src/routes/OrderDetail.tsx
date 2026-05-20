@@ -1,8 +1,8 @@
 import { useState, useMemo } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { ordersApi } from "../lib/api";
-import type { OrderLine, OrderRecommendation } from "../lib/api";
+import { ordersApi, salesRepsApi } from "../lib/api";
+import type { OrderLine, OrderRecommendation, SalesRepOut } from "../lib/api";
 import { money } from "../lib/fmt";
 import SortableTable, { useSort, Column } from "../components/SortableTable";
 
@@ -215,6 +215,7 @@ export default function OrderDetailPage() {
 
   const [divisionFilter, setDivisionFilter] = useState<string>("");
   const [addCode, setAddCode] = useState("");
+  const [emailDropdownOpen, setEmailDropdownOpen] = useState(false);
 
   // ── Queries ──
 
@@ -275,6 +276,24 @@ export default function OrderDetailPage() {
     mutationFn: (code: string) => ordersApi.removeItem(id, code),
     onSuccess: invalidate,
   });
+
+  // ── Sales reps ──
+
+  const repsQ = useQuery({
+    queryKey: ["sales-reps"],
+    queryFn: () => salesRepsApi.list(),
+  });
+
+  async function handleEmailRep(rep?: SalesRepOut) {
+    try {
+      const data = await salesRepsApi.generateEmail(id, rep?.id);
+      const mailto = `mailto:${encodeURIComponent(data.to)}?subject=${encodeURIComponent(data.subject)}&body=${encodeURIComponent(data.body)}`;
+      window.open(mailto, "_blank");
+    } catch {
+      alert("Failed to generate email");
+    }
+    setEmailDropdownOpen(false);
+  }
 
   // ── Export via fetch + blob ──
 
@@ -686,6 +705,68 @@ export default function OrderDetailPage() {
           >
             Export Excel
           </button>
+          {/* Email Rep dropdown */}
+          <div className="relative">
+            <button
+              onClick={() => setEmailDropdownOpen(!emailDropdownOpen)}
+              className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-xs font-medium hover:bg-zinc-50 flex items-center gap-1"
+            >
+              Email Rep
+              <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+            {emailDropdownOpen && (
+              <div className="absolute right-0 mt-1 w-56 rounded-lg border border-zinc-200 bg-white shadow-lg z-50 py-1">
+                {repsQ.data && repsQ.data.length > 0 ? (
+                  <>
+                    {repsQ.data.map((rep) => (
+                      <button
+                        key={rep.id}
+                        onClick={() => handleEmailRep(rep)}
+                        className="w-full text-left px-3 py-2 text-sm hover:bg-zinc-50 flex items-center justify-between"
+                      >
+                        <span>
+                          {rep.name}
+                          {rep.division && (
+                            <span className="ml-1.5 text-[10px] font-medium text-zinc-400">
+                              {rep.division}
+                            </span>
+                          )}
+                        </span>
+                        <span className="text-xs text-zinc-400 truncate ml-2 max-w-[120px]">
+                          {rep.email}
+                        </span>
+                      </button>
+                    ))}
+                    <div className="border-t border-zinc-100 mt-1 pt-1">
+                      <button
+                        onClick={() => handleEmailRep()}
+                        className="w-full text-left px-3 py-2 text-sm text-zinc-500 hover:bg-zinc-50"
+                      >
+                        Custom email...
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      onClick={() => handleEmailRep()}
+                      className="w-full text-left px-3 py-2 text-sm hover:bg-zinc-50"
+                    >
+                      Compose email...
+                    </button>
+                    <div className="px-3 py-2 text-xs text-zinc-400">
+                      Add sales reps in{" "}
+                      <Link to="/settings" className="underline hover:text-zinc-600">
+                        Settings
+                      </Link>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
           {isDraft && (
             <button
               onClick={() => submitOrder.mutate()}

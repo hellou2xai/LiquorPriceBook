@@ -875,6 +875,30 @@ class LowConfidenceMatch(Base):
     )
 
 
+class SalesRep(Base):
+    """A distributor sales rep contact, scoped to a tenant and division."""
+
+    __tablename__ = "sales_reps"
+
+    id: Mapped[UUID] = _uuid_pk()
+    tenant_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True),
+        ForeignKey("tenants.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    email: Mapped[str] = mapped_column(String(255), nullable=False)
+    phone: Mapped[str | None] = mapped_column(String(64))
+    division: Mapped[str | None] = mapped_column(String(16))
+    notes: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = _now()
+    updated_at: Mapped[datetime] = _updated()
+
+    __table_args__ = (
+        Index("ix_sales_reps_tenant", "tenant_id"),
+    )
+
+
 __all__ = [
     # dims
     "Distributor", "Category", "Brand",
@@ -890,4 +914,6 @@ __all__ = [
     "AuditLog",
     # AI / matching
     "AiVerdictCache", "LowConfidenceMatch",
+    # sales
+    "SalesRep",
 ]
