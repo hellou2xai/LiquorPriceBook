@@ -82,7 +82,7 @@ export default function Rips() {
       label: "",
       thClassName: "w-8",
       render: (r) => (
-        <FavoriteButton code={r.code} isFavorite={favCodes.has(r.code)} note={favNotes.get(r.code)} showNote />
+        <FavoriteButton code={r.code} distributor={distributor} isFavorite={favCodes.has(r.code)} note={favNotes.get(r.code)} showNote />
       ),
     },
     {

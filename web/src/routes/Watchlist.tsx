@@ -401,7 +401,7 @@ export default function Watchlist() {
   const [showHistory, setShowHistory] = useState(false);
   const { distributor } = useDistributor();
 
-  useMemo(() => {
+  useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search), 250);
     return () => clearTimeout(t);
   }, [search]);

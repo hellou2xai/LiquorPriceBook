@@ -69,7 +69,7 @@ function makeProductColumns(
   const cols: Column<AnalyticsRow>[] = [
     {
       key: "fav", label: "", thClassName: "w-8",
-      render: (r) => <FavoriteButton code={r.code} isFavorite={favCodes.has(r.code)} note={favNotes.get(r.code)} showNote />,
+      render: (r) => <FavoriteButton code={r.code} distributor={r.distributor_slug ?? undefined} isFavorite={favCodes.has(r.code)} note={favNotes.get(r.code)} showNote />,
     },
     {
       key: "code", label: "Code", sortable: true,

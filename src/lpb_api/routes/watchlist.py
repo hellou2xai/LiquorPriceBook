@@ -40,7 +40,7 @@ from lpb_core.db.models import (
 )
 
 from .auth import get_current_user
-from .catalog import _current_edition
+from .catalog import _current_edition, _current_edition_ids
 
 router = APIRouter(tags=["watchlist"])
 
@@ -200,7 +200,9 @@ def watchlist_order(
     session: Session = Depends(get_session),  # noqa: B008
 ):
     """Enriched watchlist with full product details and RIP info for the order page."""
-    edition = _current_edition(session, distributor)
+    # Get current edition IDs for all distributors so tracked products from
+    # any distributor resolve correctly (not just the sidebar-selected one).
+    edition_ids = _current_edition_ids(session, "all")
 
     # Subquery: best (highest save_amount) RIP per product_edition
     top_rip_sub = (
@@ -243,7 +245,7 @@ def watchlist_order(
             ProductEdition,
             and_(
                 ProductEdition.product_id == Product.id,
-                ProductEdition.book_edition_id == edition.id,
+                ProductEdition.book_edition_id.in_(edition_ids),
             ),
         )
         .outerjoin(Category, Category.id == ProductEdition.category_id)
@@ -285,10 +287,19 @@ def watchlist_order(
     elif sort == "rip_save":
         stmt = stmt.order_by(desc(top_rip.save_amount).nullslast(), asc(Product.code))
 
-    rows = session.execute(stmt).all()
+    raw_rows = session.execute(stmt).all()
 
-    if not rows:
+    if not raw_rows:
         return []
+
+    # Deduplicate: RIP join can produce multiple rows per product code.
+    # Keep first occurrence (which has the best RIP due to the join logic).
+    seen_codes: set[str] = set()
+    rows: list = []
+    for r in raw_rows:
+        if r.product_code not in seen_codes:
+            seen_codes.add(r.product_code)
+            rows.append(r)
 
     # ── Bulk fetch ALL RIP tiers per product (not just best) ──
     product_codes_set = {r.product_code for r in rows}
@@ -305,7 +316,7 @@ def watchlist_order(
         .join(ProductEdition, ProductEdition.id == RipOffer.product_edition_id)
         .join(Product, Product.id == ProductEdition.product_id)
         .where(
-            ProductEdition.book_edition_id == edition.id,
+            ProductEdition.book_edition_id.in_(edition_ids),
             Product.code.in_(product_codes_set),
         )
         .order_by(Product.code, asc(RipOffer.tier_cases))
@@ -340,23 +351,27 @@ def watchlist_order(
     for hr in hist_rows:
         history_map[hr.code].append(hr.case_cost)
 
-    # Check which products had RIP in previous edition
-    prev_editions = session.execute(
-        select(BookEdition)
-        .join(Distributor, Distributor.id == BookEdition.distributor_id)
-        .where(Distributor.slug == distributor)
-        .order_by(desc(BookEdition.year), desc(BookEdition.month))
-        .limit(2)
-    ).scalars().all()
+    # Check which products had RIP in previous editions (across all distributors)
     prev_rip_codes: set[str] = set()
-    if len(prev_editions) >= 2:
-        prev_ed = prev_editions[1]  # second-most-recent edition
+    all_editions = session.execute(
+        select(BookEdition.id, Distributor.slug)
+        .join(Distributor, Distributor.id == BookEdition.distributor_id)
+        .order_by(Distributor.slug, desc(BookEdition.year), desc(BookEdition.month))
+    ).all()
+    # Find second-most-recent edition per distributor
+    prev_edition_ids: list = []
+    seen_dist: dict[str, int] = {}
+    for eid, dslug in all_editions:
+        seen_dist[dslug] = seen_dist.get(dslug, 0) + 1
+        if seen_dist[dslug] == 2:  # second edition = previous
+            prev_edition_ids.append(eid)
+    if prev_edition_ids:
         prev_rip_rows = session.execute(
             select(Product.code)
             .select_from(RipOffer)
             .join(ProductEdition, ProductEdition.id == RipOffer.product_edition_id)
             .join(Product, Product.id == ProductEdition.product_id)
-            .where(ProductEdition.book_edition_id == prev_ed.id)
+            .where(ProductEdition.book_edition_id.in_(prev_edition_ids))
             .distinct()
         ).scalars().all()
         prev_rip_codes = set(prev_rip_rows)

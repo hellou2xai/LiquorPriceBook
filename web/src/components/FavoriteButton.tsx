@@ -4,12 +4,13 @@ import { watchlistApi } from "../lib/api";
 
 type Props = {
   code: string;
+  distributor?: string;
   isFavorite: boolean;
   note?: string | null;
   showNote?: boolean;
 };
 
-export default function FavoriteButton({ code, isFavorite, note, showNote = false }: Props) {
+export default function FavoriteButton({ code, distributor, isFavorite, note, showNote = false }: Props) {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [noteText, setNoteText] = useState("");
@@ -17,7 +18,7 @@ export default function FavoriteButton({ code, isFavorite, note, showNote = fals
   const btnRef = useRef<HTMLButtonElement>(null);
 
   const add = useMutation({
-    mutationFn: (notes?: string) => watchlistApi.add({ code, notes: notes || null }),
+    mutationFn: (notes?: string) => watchlistApi.add({ code, distributor, notes: notes || null }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["watchlist"] });
       qc.invalidateQueries({ queryKey: ["watchlist-order"] });
@@ -26,7 +27,7 @@ export default function FavoriteButton({ code, isFavorite, note, showNote = fals
     },
   });
   const remove = useMutation({
-    mutationFn: () => watchlistApi.remove(code),
+    mutationFn: () => watchlistApi.remove(code, distributor),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["watchlist"] });
       qc.invalidateQueries({ queryKey: ["watchlist-order"] });

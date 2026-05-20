@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 
@@ -462,7 +462,7 @@ export default function Catalog() {
   const catalogDistributor = "all";
 
   // Debounce search
-  useMemo(() => {
+  useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(filters.search), 150);
     return () => clearTimeout(t);
   }, [filters.search]);
@@ -665,6 +665,7 @@ export default function Catalog() {
                         <td className="px-3 py-2">
                           <FavoriteButton
                             code={p.code}
+                            distributor={p.distributor_slug ?? undefined}
                             isFavorite={favCodes.has(p.code)}
                             note={favNotes.get(p.code)}
                             showNote
