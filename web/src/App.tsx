@@ -36,7 +36,7 @@ function Shell({ children }: { children: React.ReactNode }) {
           <div className="flex h-14 items-center justify-between">
             <div className="flex items-center gap-8">
               <NavLink to="/" className="font-semibold tracking-tight">
-                LiquorPriceBook
+                CELR Liquor Price Book
               </NavLink>
               {isAuthed ? (
                 <nav className="hidden md:flex items-center gap-1">
@@ -78,7 +78,7 @@ function Shell({ children }: { children: React.ReactNode }) {
 
       <footer className="border-t border-zinc-200 bg-white">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-4 text-xs text-zinc-500">
-          LiquorPriceBook · for NJ liquor retailers · v0.1
+          CELR Liquor Price Book · for NJ liquor retailers · v0.1
         </div>
       </footer>
     </div>

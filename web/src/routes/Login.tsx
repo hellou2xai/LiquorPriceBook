@@ -38,7 +38,7 @@ export default function Login() {
       >
         <h1 className="text-xl font-semibold tracking-tight">Sign in</h1>
         <p className="mt-1 text-sm text-zinc-500">
-          LiquorPriceBook · interim static admin login
+          CELR Liquor Price Book · interim static admin login
         </p>
 
         <div className="mt-5 space-y-4">
