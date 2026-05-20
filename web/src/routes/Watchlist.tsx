@@ -379,6 +379,7 @@ export default function Watchlist() {
 
         <td className="px-2 py-2 text-zinc-600 text-xs">{item.category_display ?? "\u2014"}</td>
         <td className="px-2 py-2 text-zinc-600 text-xs">{item.brand_display ?? "\u2014"}</td>
+        <td className="px-2 py-2 text-zinc-500 text-[10px] font-mono">{item.divisions ?? "\u2014"}</td>
 
         {/* Regular Case */}
         <td className="px-2 py-2 text-right tabular-nums">{money(item.case_cost)}</td>
@@ -459,7 +460,7 @@ export default function Watchlist() {
       const isBest = rip.save_amount === item.rip_save_amount && rip.tier === item.rip_tier;
       return (
         <tr key={`${item.product_code}-rip-${idx}`} className={`${isBest ? "bg-emerald-50/40" : "bg-zinc-50/50"} border-l-2 ${isBest ? "border-l-emerald-400" : "border-l-amber-300"}`}>
-          <td className="px-2 py-1.5" colSpan={5}>
+          <td className="px-2 py-1.5" colSpan={6}>
             <div className="pl-6 flex items-center gap-2">
               <span className="text-[10px] text-zinc-400">RIP Tier:</span>
               <span className={`inline-flex items-center rounded-md border px-1.5 py-0.5 text-[10px] font-medium ${isBest ? "bg-emerald-50 border-emerald-300 text-emerald-800" : "bg-amber-50 border-amber-200 text-amber-800"}`}>
@@ -498,7 +499,7 @@ export default function Watchlist() {
     return <>{mainRow}{tierRows}</>;
   }
 
-  const COL_SPAN = 13;
+  const COL_SPAN = 14;
 
   return (
     <div className="space-y-4">
@@ -627,6 +628,7 @@ export default function Watchlist() {
                 <th className="px-2 py-2">Product</th>
                 <th className="px-2 py-2">Category</th>
                 <th className="px-2 py-2">Brand</th>
+                <th className="px-2 py-2">Div</th>
                 <th className="px-2 py-2 text-right">Case</th>
                 <th className="px-2 py-2 text-right">Trend</th>
                 <th className="px-2 py-2">RIP</th>

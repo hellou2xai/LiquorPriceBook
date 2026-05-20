@@ -74,6 +74,7 @@ class ProductRow(BaseModel):
     btl_cost: Decimal | None
     category_slug: str | None
     brand_slug: str | None
+    divisions: str | None = None
     has_rip: bool
     top_rip_save: Decimal | None
     top_rip_tier: str | None
@@ -127,6 +128,7 @@ class ProductDetailOut(BaseModel):
     category_display: str | None
     brand_slug: str | None
     brand_display: str | None
+    divisions: str | None = None
     case_cost: Decimal | None
     btl_cost: Decimal | None
     prev_case_cost: Decimal | None
@@ -311,6 +313,7 @@ def list_products(
             ProductEdition.btl_cost.label("btl_cost"),
             Category.slug.label("category_slug"),
             Brand.slug.label("brand_slug"),
+            ProductEdition.divisions.label("divisions"),
             top_rip.tier.label("top_rip_tier"),
             top_rip.save_amount.label("top_rip_save"),
             ProductEdition.id.label("product_edition_id"),
@@ -402,6 +405,7 @@ def list_products(
             btl_cost=r.btl_cost,
             category_slug=r.category_slug,
             brand_slug=r.brand_slug,
+            divisions=r.divisions,
             has_rip=r.top_rip_save is not None,
             top_rip_save=r.top_rip_save,
             top_rip_tier=r.top_rip_tier,
@@ -571,6 +575,7 @@ def product_detail(
         category_display=latest_pe.cat_display,
         brand_slug=latest_pe.brand_slug,
         brand_display=latest_pe.brand_display,
+        divisions=pe.divisions,
         case_cost=pe.case_cost,
         btl_cost=pe.btl_cost,
         prev_case_cost=prev_case_cost,

@@ -138,6 +138,7 @@ export type ProductRow = {
   btl_cost: string | null;
   category_slug: string | null;
   brand_slug: string | null;
+  divisions: string | null;
   has_rip: boolean;
   top_rip_save: string | null;
   top_rip_tier: string | null;
@@ -191,6 +192,7 @@ export type ProductDetail = {
   category_display: string | null;
   brand_slug: string | null;
   brand_display: string | null;
+  divisions: string | null;
   case_cost: string | null;
   btl_cost: string | null;
   prev_case_cost: string | null;
@@ -308,6 +310,7 @@ export type OrderItem = {
   category_display: string | null;
   brand_slug: string | null;
   brand_display: string | null;
+  divisions: string | null;
   case_cost: string | null;
   btl_cost: string | null;
   has_rip: boolean;

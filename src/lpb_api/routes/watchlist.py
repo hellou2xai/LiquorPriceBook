@@ -78,6 +78,7 @@ class OrderItemOut(BaseModel):
     category_display: str | None = None
     brand_slug: str | None = None
     brand_display: str | None = None
+    divisions: str | None = None
     case_cost: Decimal | None = None
     btl_cost: Decimal | None = None
     has_rip: bool = False
@@ -221,6 +222,7 @@ def watchlist_order(
             Category.display_name.label("category_display"),
             Brand.slug.label("brand_slug"),
             Brand.display_name.label("brand_display"),
+            ProductEdition.divisions,
             ProductEdition.case_cost,
             ProductEdition.btl_cost,
             top_rip.tier.label("rip_tier"),
@@ -487,6 +489,7 @@ def watchlist_order(
                 category_display=r.category_display,
                 brand_slug=r.brand_slug,
                 brand_display=r.brand_display,
+                divisions=r.divisions,
                 case_cost=r.case_cost,
                 btl_cost=r.btl_cost,
                 has_rip=has_rip,

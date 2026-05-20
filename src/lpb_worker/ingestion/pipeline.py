@@ -354,6 +354,7 @@ def _upsert_products_and_editions(
                 "raw_category": r.get("category"),
                 "raw_brand_header": r.get("brand_header"),
                 "description": r.get("brand_header"),  # main catalog has no separate desc
+                "divisions": r.get("divisions"),
                 "size": r.get("size"),
                 "pack": r.get("pack"),
                 "po_cost": _to_decimal(r.get("po_cost")),

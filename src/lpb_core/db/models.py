@@ -290,6 +290,7 @@ class ProductEdition(Base):
     po_cost: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
     case_cost: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
     btl_cost: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
+    divisions: Mapped[str | None] = mapped_column(String(255))
     best_buy_raw: Mapped[str | None] = mapped_column(String(64))
     best_rip_raw: Mapped[str | None] = mapped_column(String(128))
     # Scraper provenance

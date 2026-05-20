@@ -133,9 +133,26 @@ def parse_pack(s):
         return None
 
 
-# RIP annotation lines like "$31.44 ON 1CS 114.54 19.09" sit between product
-# rows in the same lane. They describe a discount: save $X on N cases, with new
-# case and bottle prices.
+# Territory/division codes inside parentheses in brand headers.
+# e.g. "OLD GRAND-DAD ( L GS FB IV )" -> "L GS FB IV"
+_TERRITORY_PAREN_RE = re.compile(r"\(([^)]+)\)")
+
+
+def extract_divisions(text):
+    """Extract division codes from parenthesized block."""
+    m = _TERRITORY_PAREN_RE.search(text)
+    if not m:
+        return None
+    codes = m.group(1).strip()
+    tokens = codes.split()
+    if all(re.match(r"^[A-Z]{1,4}$", t) for t in tokens) and tokens:
+        return " ".join(tokens)
+    return None
+
+
+# RIP annotation lines like "$31.44 ON 1CS 114.54 19.09" sit between
+# product rows in the same lane. They describe a discount: save $X on
+# N cases, with new case and bottle prices.
 RIP_ANNOT_RE = re.compile(
     r"^\$?([\d,]+\.\d{2})\s+ON\s+(\d+)\s*CS\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s*$",
     re.IGNORECASE,
@@ -168,6 +185,7 @@ def parse_rip_annot(text):
 def parse_main_catalog(pages, source):
     rows = []
     current_brand = [None, None, None]   # one per lane
+    current_divisions = [None, None, None]  # division codes per lane
     last_product_idx = [None, None, None]   # row index in `rows` of the most recent product in this lane
 
     for page in pages:
@@ -198,6 +216,7 @@ def parse_main_catalog(pages, source):
                         "section": "MainCatalog",
                         "category": category,
                         "brand_header": current_brand[lane],
+                        "divisions": current_divisions[lane],
                         "code": vals.get("code"),
                         "size": vals.get("size"),
                         "pack": parse_pack(vals.get("pack")),
@@ -240,4 +259,7 @@ def parse_main_catalog(pages, source):
                 # Otherwise: brand header / sub-header
                 if re.search(r"[A-Z]{2,}", text):
                     current_brand[lane] = text
+                    divs = extract_divisions(text)
+                    if divs:
+                        current_divisions[lane] = divs
     return rows
