@@ -353,8 +353,10 @@ export default function Watchlist() {
   function renderRow(item: OrderItem) {
     const qty = getQty(item.product_code);
     const hasRipPrice = item.has_rip && item.effective_case;
+    const rips = item.all_rips ?? [];
+    const hasMultipleRips = rips.length > 1;
 
-    return (
+    const mainRow = (
       <tr key={item.product_code} className={`hover:bg-zinc-50 align-top ${item.buy_signal === "BUY_NOW" ? "bg-emerald-50/30" : item.buy_signal === "DEFER" ? "bg-amber-50/20" : ""}`}>
         <td className="px-2 py-2">
           <FavoriteButton code={item.product_code} isFavorite={true} />
@@ -386,7 +388,7 @@ export default function Watchlist() {
           <PriceTrend item={item} />
         </td>
 
-        {/* RIP Details */}
+        {/* RIP Details — best tier */}
         <td className="px-2 py-2">
           {item.has_rip && item.rip_tier ? (
             <div>
@@ -396,6 +398,9 @@ export default function Watchlist() {
               <div className="text-[10px] text-emerald-700 font-medium mt-0.5">
                 save {money(item.rip_save_amount)}/cs
               </div>
+              {hasMultipleRips && (
+                <div className="text-[10px] text-zinc-400 mt-0.5">{rips.length} tiers below</div>
+              )}
             </div>
           ) : (
             <span className="text-zinc-300 text-xs">{"\u2014"}</span>
@@ -446,6 +451,51 @@ export default function Watchlist() {
         </td>
       </tr>
     );
+
+    // Render each additional RIP tier as a sub-row
+    if (!hasMultipleRips) return mainRow;
+
+    const tierRows = rips.map((rip, idx) => {
+      const isBest = rip.save_amount === item.rip_save_amount && rip.tier === item.rip_tier;
+      return (
+        <tr key={`${item.product_code}-rip-${idx}`} className={`${isBest ? "bg-emerald-50/40" : "bg-zinc-50/50"} border-l-2 ${isBest ? "border-l-emerald-400" : "border-l-amber-300"}`}>
+          <td className="px-2 py-1.5" colSpan={5}>
+            <div className="pl-6 flex items-center gap-2">
+              <span className="text-[10px] text-zinc-400">RIP Tier:</span>
+              <span className={`inline-flex items-center rounded-md border px-1.5 py-0.5 text-[10px] font-medium ${isBest ? "bg-emerald-50 border-emerald-300 text-emerald-800" : "bg-amber-50 border-amber-200 text-amber-800"}`}>
+                {rip.tier}
+              </span>
+              <span className="text-[10px] text-zinc-500">{rip.tier_cases} case{rip.tier_cases !== 1 ? "s" : ""} min</span>
+              {isBest && <span className="text-[10px] text-emerald-600 font-medium">BEST</span>}
+            </div>
+          </td>
+          {/* Case cost — same */}
+          <td className="px-2 py-1.5 text-right tabular-nums text-xs text-zinc-400">{money(item.case_cost)}</td>
+          {/* Trend — empty for sub-row */}
+          <td className="px-2 py-1.5"></td>
+          {/* RIP save */}
+          <td className="px-2 py-1.5">
+            <span className="text-[10px] text-emerald-700 font-medium">save {money(rip.save_amount)}/cs</span>
+          </td>
+          {/* After RIP */}
+          <td className={`px-2 py-1.5 text-right tabular-nums text-xs font-medium ${isBest ? "text-emerald-700" : "text-emerald-600"}`}>
+            {money(rip.effective_case)}
+          </td>
+          {/* GP% */}
+          <td className="px-2 py-1.5 text-right tabular-nums">
+            {rip.discount_pct ? (
+              <span className="text-emerald-700 font-medium text-[10px]">{parseFloat(rip.discount_pct).toFixed(1)}%</span>
+            ) : (
+              <span className="text-zinc-300 text-[10px]">{"\u2014"}</span>
+            )}
+          </td>
+          {/* Target, Note, Qty — empty for sub-rows */}
+          <td className="px-2 py-1.5" colSpan={3}></td>
+        </tr>
+      );
+    });
+
+    return <>{mainRow}{tierRows}</>;
   }
 
   const COL_SPAN = 13;

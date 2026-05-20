@@ -57,6 +57,17 @@ class WatchlistItemOut(BaseModel):
     created_at: datetime
 
 
+class RipTierOut(BaseModel):
+    tier: str
+    tier_cases: int
+    save_amount: Decimal
+    case_price: Decimal | None = None
+    btl_price: Decimal | None = None
+    effective_case: Decimal | None = None
+    effective_btl: Decimal | None = None
+    discount_pct: Decimal | None = None
+
+
 class OrderItemOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     product_code: str
@@ -78,6 +89,7 @@ class OrderItemOut(BaseModel):
     effective_case: Decimal | None = None
     effective_btl: Decimal | None = None
     rip_discount_pct: Decimal | None = None  # (save / case_cost) * 100
+    all_rips: list[RipTierOut] = []  # all RIP tiers for comparison
     # Buy-timing intelligence
     prev_case_cost: Decimal | None = None
     price_pct_change: Decimal | None = None
@@ -275,6 +287,33 @@ def watchlist_order(
     if not rows:
         return []
 
+    # ── Bulk fetch ALL RIP tiers per product (not just best) ──
+    product_codes_set = {r.product_code for r in rows}
+    all_rips_stmt = (
+        select(
+            Product.code,
+            RipOffer.tier,
+            RipOffer.tier_cases,
+            RipOffer.save_amount,
+            RipOffer.case_price,
+            RipOffer.btl_price,
+        )
+        .select_from(RipOffer)
+        .join(ProductEdition, ProductEdition.id == RipOffer.product_edition_id)
+        .join(Product, Product.id == ProductEdition.product_id)
+        .where(
+            ProductEdition.book_edition_id == edition.id,
+            Product.code.in_(product_codes_set),
+        )
+        .order_by(Product.code, asc(RipOffer.tier_cases))
+    )
+    all_rips_rows = session.execute(all_rips_stmt).all()
+
+    from collections import defaultdict
+    rips_by_code: dict[str, list] = defaultdict(list)
+    for rr in all_rips_rows:
+        rips_by_code[rr.code].append(rr)
+
     # ── Bulk price history for buy-timing intelligence ──
     # Collect product_ids from main query to fetch history in one shot
     product_codes = [r.product_code for r in rows]
@@ -294,7 +333,6 @@ def watchlist_order(
     hist_rows = session.execute(hist_stmt).all()
 
     # Build per-product price history
-    from collections import defaultdict
     history_map: dict[str, list[Decimal | None]] = defaultdict(list)
     for hr in hist_rows:
         history_map[hr.code].append(hr.case_cost)
@@ -464,6 +502,26 @@ def watchlist_order(
                     if has_rip and r.rip_save_amount and r.case_cost and float(r.case_cost) > 0
                     else None
                 ),
+                all_rips=[
+                    RipTierOut(
+                        tier=rr.tier,
+                        tier_cases=rr.tier_cases,
+                        save_amount=rr.save_amount,
+                        case_price=rr.case_price,
+                        btl_price=rr.btl_price,
+                        effective_case=(
+                            rr.case_price if rr.case_price is not None
+                            else (r.case_cost - rr.save_amount if r.case_cost and rr.save_amount else None)
+                        ),
+                        effective_btl=rr.btl_price if rr.btl_price is not None else r.btl_cost,
+                        discount_pct=(
+                            Decimal(str(round(float(rr.save_amount) / float(r.case_cost) * 100, 1)))
+                            if rr.save_amount and r.case_cost and float(r.case_cost) > 0
+                            else None
+                        ),
+                    )
+                    for rr in rips_by_code.get(r.product_code, [])
+                ],
                 prev_case_cost=prev_case_cost,
                 price_pct_change=price_pct_change,
                 price_direction=price_direction,

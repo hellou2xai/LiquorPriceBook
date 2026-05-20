@@ -1,10 +1,10 @@
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 
-import { insightsApi, watchlistApi, catalogApi } from "../lib/api";
+import { insightsApi } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { money, pct, pctClass } from "../lib/fmt";
-import type { MoverRow, DashboardSummary } from "../lib/api";
+import type { MoverRow } from "../lib/api";
 
 function KpiCard({ label, value, sub, accent }: { label: string; value: string | number; sub?: string; accent?: "emerald" | "red" | "amber" | "sky" }) {
   const border = accent ? `border-${accent}-200` : "border-zinc-200";

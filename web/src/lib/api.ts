@@ -288,6 +288,17 @@ export type WatchlistItem = {
   created_at: string;
 };
 
+export type RipTier = {
+  tier: string;
+  tier_cases: number;
+  save_amount: string;
+  case_price: string | null;
+  btl_price: string | null;
+  effective_case: string | null;
+  effective_btl: string | null;
+  discount_pct: string | null;
+};
+
 export type OrderItem = {
   product_code: string;
   description: string | null;
@@ -308,6 +319,7 @@ export type OrderItem = {
   effective_case: string | null;
   effective_btl: string | null;
   rip_discount_pct: string | null;
+  all_rips: RipTier[];
   // Buy-timing intelligence
   prev_case_cost: string | null;
   price_pct_change: string | null;

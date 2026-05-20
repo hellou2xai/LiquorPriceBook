@@ -108,7 +108,7 @@ export default function Closeouts() {
         <select value={daysFilter} onChange={(e) => setDaysFilter(e.target.value as "" | "new" | "aging")} className="rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-sm">
           <option value="">All items</option>
           <option value="new">New (≤30 days)</option>
-          <option value="aging">Aging (>30 days)</option>
+          <option value="aging">Aging (&gt;30 days)</option>
         </select>
         <label className="text-sm text-zinc-700 flex items-center gap-2">
           Min %
