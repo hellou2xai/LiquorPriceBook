@@ -14,6 +14,7 @@ import sentry_sdk
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from lpb_api.routes import admin_links as admin_links_routes
 from lpb_api.routes import ai as ai_routes
 from lpb_api.routes import analytics as analytics_routes
 from lpb_api.routes import auth as auth_routes
@@ -151,6 +152,7 @@ def readyz() -> dict:
     }
 
 
+app.include_router(admin_links_routes.router)
 app.include_router(auth_routes.router)
 app.include_router(ingest_routes.router)
 app.include_router(catalog_routes.router)

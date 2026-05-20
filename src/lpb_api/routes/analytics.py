@@ -1,18 +1,24 @@
 """Pricing analytics endpoints for cross-edition comparison.
 
-  GET /api/v1/analytics?view=<view>&limit=N
+  GET /api/v1/analytics?view=<view>&limit=N&distributor=<slug|all>
 
-Views:
-  price_drops       — products with biggest case cost decreases
-  price_increases   — products with biggest case cost increases
-  new_rips          — RIP offers added this edition (not in previous)
-  lost_rips         — RIP offers removed (were in previous, gone now)
-  best_value        — lowest effective cost (case_cost - RIP save)
-  closeout_rip      — closeout items that ALSO have RIP offers (double savings)
-  category_trends   — average price change per category
-  new_products      — products in current edition but not previous
-  discontinued      — products in previous edition but not current
-  watchlist_movers  — price changes on user's tracked products
+Views (single distributor):
+  price_drops       -- products with biggest case cost decreases
+  price_increases   -- products with biggest case cost increases
+  new_rips          -- RIP offers added this edition (not in previous)
+  lost_rips         -- RIP offers removed (were in previous, gone now)
+  best_value        -- lowest effective cost (case_cost - RIP save)
+  closeout_rip      -- closeout items that ALSO have RIP offers
+  category_trends   -- average price change per category
+  new_products      -- products in current edition but not previous
+  discontinued      -- products in previous edition but not current
+  watchlist_movers  -- price changes on user's tracked products
+
+Cross-distributor views (distributor=all or specific):
+  cross_category_compare  -- avg price per category per distributor
+  cross_rip_coverage      -- RIP stats per category per distributor
+  cross_brand_availability-- brand presence comparison
+  cross_price_compare     -- matched product prices (via product_links)
 """
 
 from __future__ import annotations
@@ -20,7 +26,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import and_, asc, case, desc, func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
 from lpb_core.db import get_session
 from lpb_core.db.models import (
@@ -31,6 +37,7 @@ from lpb_core.db.models import (
     InventoryReduction,
     Product,
     ProductEdition,
+    ProductLink,
     RipOffer,
     Watchlist,
     WatchlistItem,
@@ -40,14 +47,21 @@ from .auth import get_current_user
 
 router = APIRouter(prefix="/api/v1/analytics", tags=["analytics"])
 
-VALID_VIEWS = {
+SINGLE_VIEWS = {
     "price_drops", "price_increases", "new_rips", "lost_rips",
     "best_value", "closeout_rip", "category_trends",
     "new_products", "discontinued", "watchlist_movers",
 }
 
+CROSS_VIEWS = {
+    "cross_category_compare", "cross_rip_coverage",
+    "cross_brand_availability", "cross_price_compare",
+}
 
-# ── Schemas ──────────────────────────────────────────────────────────────
+VALID_VIEWS = SINGLE_VIEWS | CROSS_VIEWS
+
+
+# -- Schemas ------------------------------------------------------------------
 
 class AnalyticsRow(BaseModel):
     code: str
@@ -64,7 +78,9 @@ class AnalyticsRow(BaseModel):
     rip_tier: str | None = None
     is_closeout: bool = False
     closeout_pct_off: float | None = None
-    tag: str | None = None  # extra context per view
+    tag: str | None = None
+    distributor_slug: str | None = None
+    distributor_name: str | None = None
 
 
 class CategoryTrendRow(BaseModel):
@@ -76,6 +92,72 @@ class CategoryTrendRow(BaseModel):
     avg_pct_change: float
     drops: int
     increases: int
+    distributor_slug: str | None = None
+    distributor_name: str | None = None
+
+
+class CrossCategoryRow(BaseModel):
+    category: str
+    product_count_a: int = 0
+    product_count_b: int = 0
+    avg_cost_a: str | None = None
+    avg_cost_b: str | None = None
+    diff: str | None = None
+    pct_diff: float | None = None
+    cheaper: str | None = None  # distributor slug that's cheaper
+    distributor_a_slug: str = ""
+    distributor_a_name: str = ""
+    distributor_b_slug: str = ""
+    distributor_b_name: str = ""
+
+
+class CrossRipRow(BaseModel):
+    category: str
+    rip_count_a: int = 0
+    rip_count_b: int = 0
+    avg_save_a: str | None = None
+    avg_save_b: str | None = None
+    coverage_pct_a: float | None = None
+    coverage_pct_b: float | None = None
+    distributor_a_slug: str = ""
+    distributor_a_name: str = ""
+    distributor_b_slug: str = ""
+    distributor_b_name: str = ""
+
+
+class CrossBrandRow(BaseModel):
+    brand: str
+    count_a: int = 0
+    count_b: int = 0
+    exclusive_to: str | None = None  # distributor slug or None if shared
+    distributor_a_slug: str = ""
+    distributor_a_name: str = ""
+    distributor_b_slug: str = ""
+    distributor_b_name: str = ""
+
+
+class CrossPriceRow(BaseModel):
+    """Matched products across distributors via product_links."""
+    link_id: str
+    canonical_description: str | None = None
+    size: str | None = None
+    brand: str | None = None
+    category: str | None = None
+    code_a: str | None = None
+    code_b: str | None = None
+    case_cost_a: str | None = None
+    case_cost_b: str | None = None
+    diff: str | None = None
+    pct_diff: float | None = None
+    cheaper: str | None = None
+    rip_save_a: str | None = None
+    rip_save_b: str | None = None
+    effective_a: str | None = None
+    effective_b: str | None = None
+    distributor_a_slug: str = ""
+    distributor_a_name: str = ""
+    distributor_b_slug: str = ""
+    distributor_b_name: str = ""
 
 
 class AnalyticsResponse(BaseModel):
@@ -85,9 +167,14 @@ class AnalyticsResponse(BaseModel):
     total: int
     rows: list[AnalyticsRow] = []
     category_rows: list[CategoryTrendRow] = []
+    cross_category_rows: list[CrossCategoryRow] = []
+    cross_rip_rows: list[CrossRipRow] = []
+    cross_brand_rows: list[CrossBrandRow] = []
+    cross_price_rows: list[CrossPriceRow] = []
+    distributors: list[str] = []  # slugs involved
 
 
-# ── Helpers ──────────────────────────────────────────────────────────────
+# -- Helpers ------------------------------------------------------------------
 
 def _money(v) -> str | None:
     if v is None:
@@ -112,11 +199,44 @@ def _get_editions(session: Session, slug: str = "nj-allied"):
     return current, previous
 
 
+def _get_all_editions(session: Session):
+    """Return dict[slug -> (current, previous, Distributor)] for all distributors."""
+    rows = session.execute(
+        select(BookEdition, Distributor)
+        .join(Distributor, Distributor.id == BookEdition.distributor_id)
+        .order_by(Distributor.slug, desc(BookEdition.year),
+                  desc(BookEdition.month), desc(BookEdition.created_at))
+    ).all()
+    if not rows:
+        raise HTTPException(status_code=404, detail="No editions found")
+
+    by_slug: dict[str, list[tuple]] = {}
+    for ed, dist in rows:
+        by_slug.setdefault(dist.slug, []).append((ed, dist))
+
+    result: dict[str, tuple] = {}
+    for slug, pairs in by_slug.items():
+        cur = pairs[0][0]
+        prev = pairs[1][0] if len(pairs) > 1 else None
+        dist = pairs[0][1]
+        result[slug] = (cur, prev, dist)
+    return result
+
+
 def _label(ed: BookEdition) -> str:
     return f"{ed.year:04d}-{ed.month:02d}"
 
 
-# ── Main endpoint ────────────────────────────────────────────────────────
+def _dist_info(session: Session, edition: BookEdition) -> tuple[str, str]:
+    """Return (slug, name) for a BookEdition's distributor."""
+    row = session.execute(
+        select(Distributor.slug, Distributor.name)
+        .where(Distributor.id == edition.distributor_id)
+    ).first()
+    return (row.slug, row.name) if row else ("unknown", "Unknown")
+
+
+# -- Main endpoint ------------------------------------------------------------
 
 @router.get("", response_model=AnalyticsResponse)
 def get_analytics(
@@ -132,16 +252,71 @@ def get_analytics(
             detail=f"Invalid view. Valid: {', '.join(sorted(VALID_VIEWS))}",
         )
 
+    # Cross-distributor views
+    if view in CROSS_VIEWS:
+        return _CROSS_HANDLERS[view](session, limit, user)
+
+    # Single-distributor views with distributor=all support
+    if distributor == "all":
+        return _handle_all_distributors(view, session, limit, user)
+
     current, previous = _get_editions(session, slug=distributor)
+    dslug, dname = _dist_info(session, current)
+    handler = _SINGLE_HANDLERS[view]
+    resp = handler(session, current, previous, limit, user)
+    # Stamp distributor info on rows
+    for r in resp.rows:
+        r.distributor_slug = dslug
+        r.distributor_name = dname
+    for r in resp.category_rows:
+        r.distributor_slug = dslug
+        r.distributor_name = dname
+    resp.distributors = [dslug]
+    return resp
 
-    handler = _HANDLERS[view]
-    return handler(session, current, previous, limit, user)
+
+def _handle_all_distributors(view, session, limit, user):
+    """Run a single-distributor view across all distributors and merge."""
+    all_eds = _get_all_editions(session)
+    handler = _SINGLE_HANDLERS[view]
+
+    merged_rows: list[AnalyticsRow] = []
+    merged_cat_rows: list[CategoryTrendRow] = []
+    dist_slugs = []
+    edition_labels = []
+
+    for slug, (cur, prev, dist) in sorted(all_eds.items()):
+        resp = handler(session, cur, prev, limit, user)
+        for r in resp.rows:
+            r.distributor_slug = dist.slug
+            r.distributor_name = dist.name
+            merged_rows.append(r)
+        for r in resp.category_rows:
+            r.distributor_slug = dist.slug
+            r.distributor_name = dist.name
+            merged_cat_rows.append(r)
+        dist_slugs.append(slug)
+        edition_labels.append(resp.edition_current)
+
+    # Sort merged rows by absolute pct_change
+    if view in ("price_drops", "price_increases", "watchlist_movers", "best_value"):
+        merged_rows.sort(key=lambda r: abs(r.pct_change or 0), reverse=True)
+    merged_rows = merged_rows[:limit]
+    merged_cat_rows = merged_cat_rows[:limit]
+
+    return AnalyticsResponse(
+        view=view,
+        edition_current=" / ".join(edition_labels) if edition_labels else "",
+        total=len(merged_rows) or len(merged_cat_rows),
+        rows=merged_rows,
+        category_rows=merged_cat_rows,
+        distributors=dist_slugs,
+    )
 
 
-# ── View handlers ────────────────────────────────────────────────────────
+# -- Single-distributor view handlers ----------------------------------------
 
 def _price_changes(session, current, previous, limit, user, *, direction: str):
-    """Shared logic for price_drops and price_increases."""
     if previous is None:
         return AnalyticsResponse(
             view=f"price_{direction}s",
@@ -149,9 +324,7 @@ def _price_changes(session, current, previous, limit, user, *, direction: str):
             total=0,
         )
 
-    # Join current and previous editions on product_id
     CurPE = ProductEdition
-    from sqlalchemy.orm import aliased
     PrevPE = aliased(ProductEdition, name="prev_pe")
 
     stmt = (
@@ -230,11 +403,9 @@ def _price_increases(session, current, previous, limit, user):
 
 
 def _new_rips(session, current, previous, limit, user):
-    """RIP offers in current edition that don't exist in previous."""
     if previous is None:
         return AnalyticsResponse(view="new_rips", edition_current=_label(current), total=0)
 
-    # Subquery: product IDs with RIPs in previous edition
     prev_rip_pids = (
         select(Product.id)
         .join(ProductEdition, ProductEdition.product_id == Product.id)
@@ -296,7 +467,6 @@ def _new_rips(session, current, previous, limit, user):
 
 
 def _lost_rips(session, current, previous, limit, user):
-    """RIP offers in previous edition that are gone in current."""
     if previous is None:
         return AnalyticsResponse(view="lost_rips", edition_current=_label(current), total=0)
 
@@ -355,9 +525,6 @@ def _lost_rips(session, current, previous, limit, user):
 
 
 def _best_value(session, current, previous, limit, user):
-    """Products ranked by lowest effective cost (case_cost - best RIP save)."""
-    from sqlalchemy.orm import aliased
-
     PrevPE = aliased(ProductEdition, name="prev_pe")
 
     stmt = (
@@ -426,7 +593,6 @@ def _best_value(session, current, previous, limit, user):
 
 
 def _closeout_rip(session, current, _previous, limit, user):
-    """Products that are BOTH closeout AND have RIP offers — double savings."""
     stmt = (
         select(
             Product.code,
@@ -489,13 +655,11 @@ def _closeout_rip(session, current, _previous, limit, user):
 
 
 def _category_trends(session, current, previous, limit, user):
-    """Average price change per category between editions."""
     if previous is None:
         return AnalyticsResponse(
             view="category_trends", edition_current=_label(current), total=0,
         )
 
-    from sqlalchemy.orm import aliased
     PrevPE = aliased(ProductEdition, name="prev_pe")
 
     stmt = (
@@ -556,7 +720,6 @@ def _category_trends(session, current, previous, limit, user):
 
 
 def _new_products(session, current, previous, limit, user):
-    """Products in current edition that don't exist in previous."""
     if previous is None:
         return AnalyticsResponse(view="new_products", edition_current=_label(current), total=0)
 
@@ -605,7 +768,6 @@ def _new_products(session, current, previous, limit, user):
 
 
 def _discontinued(session, current, previous, limit, user):
-    """Products in previous edition that are gone in current."""
     if previous is None:
         return AnalyticsResponse(view="discontinued", edition_current=_label(current), total=0)
 
@@ -654,7 +816,6 @@ def _discontinued(session, current, previous, limit, user):
 
 
 def _watchlist_movers(session, current, previous, limit, user):
-    """Price changes on user's tracked products."""
     if previous is None:
         return AnalyticsResponse(view="watchlist_movers", edition_current=_label(current), total=0)
 
@@ -673,7 +834,6 @@ def _watchlist_movers(session, current, previous, limit, user):
         .where(WatchlistItem.watchlist_id == default_wl.id)
     ).scalar_subquery()
 
-    from sqlalchemy.orm import aliased
     PrevPE = aliased(ProductEdition, name="prev_pe")
 
     stmt = (
@@ -728,7 +888,349 @@ def _watchlist_movers(session, current, previous, limit, user):
     )
 
 
-_HANDLERS = {
+# -- Cross-distributor view handlers -----------------------------------------
+
+def _cross_category_compare(session: Session, limit: int, user: dict):
+    """Average case cost per category per distributor — side by side."""
+    all_eds = _get_all_editions(session)
+    slugs = sorted(all_eds.keys())
+    if len(slugs) < 2:
+        return AnalyticsResponse(view="cross_category_compare", edition_current="", total=0)
+
+    slug_a, slug_b = slugs[0], slugs[1]
+    ed_a, _, dist_a = all_eds[slug_a]
+    ed_b, _, dist_b = all_eds[slug_b]
+
+    # Get avg case cost per category for each distributor
+    def _cat_stats(eid):
+        return dict(session.execute(
+            select(
+                Category.display_name,
+                func.count(ProductEdition.id).label("cnt"),
+                func.avg(ProductEdition.case_cost).label("avg_cost"),
+            )
+            .join(Category, Category.id == ProductEdition.category_id)
+            .where(
+                ProductEdition.book_edition_id == eid,
+                ProductEdition.case_cost.is_not(None),
+            )
+            .group_by(Category.display_name)
+            .having(func.count() >= 3)
+        ).all(), key=lambda r: r[0])  # type: ignore
+
+    # Collect raw data
+    rows_a = session.execute(
+        select(
+            Category.display_name.label("cat"),
+            func.count(ProductEdition.id).label("cnt"),
+            func.avg(ProductEdition.case_cost).label("avg_cost"),
+        )
+        .join(Category, Category.id == ProductEdition.category_id)
+        .where(ProductEdition.book_edition_id == ed_a.id, ProductEdition.case_cost.is_not(None))
+        .group_by(Category.display_name)
+        .having(func.count() >= 3)
+    ).all()
+
+    rows_b = session.execute(
+        select(
+            Category.display_name.label("cat"),
+            func.count(ProductEdition.id).label("cnt"),
+            func.avg(ProductEdition.case_cost).label("avg_cost"),
+        )
+        .join(Category, Category.id == ProductEdition.category_id)
+        .where(ProductEdition.book_edition_id == ed_b.id, ProductEdition.case_cost.is_not(None))
+        .group_by(Category.display_name)
+        .having(func.count() >= 3)
+    ).all()
+
+    stats_a = {r.cat: (r.cnt, float(r.avg_cost)) for r in rows_a}
+    stats_b = {r.cat: (r.cnt, float(r.avg_cost)) for r in rows_b}
+
+    all_cats = sorted(set(stats_a.keys()) | set(stats_b.keys()))
+    result = []
+    for cat in all_cats:
+        cnt_a, avg_a = stats_a.get(cat, (0, None))
+        cnt_b, avg_b = stats_b.get(cat, (0, None))
+        diff = None
+        pct_diff = None
+        cheaper = None
+        if avg_a is not None and avg_b is not None:
+            diff = round(avg_a - avg_b, 2)
+            if avg_b > 0:
+                pct_diff = round(diff / avg_b * 100, 1)
+            cheaper = slug_a if avg_a < avg_b else slug_b if avg_b < avg_a else None
+        result.append(CrossCategoryRow(
+            category=cat,
+            product_count_a=cnt_a,
+            product_count_b=cnt_b,
+            avg_cost_a=_money(avg_a),
+            avg_cost_b=_money(avg_b),
+            diff=_money(diff),
+            pct_diff=pct_diff,
+            cheaper=cheaper,
+            distributor_a_slug=dist_a.slug,
+            distributor_a_name=dist_a.name,
+            distributor_b_slug=dist_b.slug,
+            distributor_b_name=dist_b.name,
+        ))
+
+    # Sort by absolute difference
+    result.sort(key=lambda r: abs(r.pct_diff or 0), reverse=True)
+    result = result[:limit]
+
+    return AnalyticsResponse(
+        view="cross_category_compare",
+        edition_current=f"{_label(ed_a)} / {_label(ed_b)}",
+        total=len(result),
+        cross_category_rows=result,
+        distributors=[slug_a, slug_b],
+    )
+
+
+def _cross_rip_coverage(session: Session, limit: int, user: dict):
+    """RIP offer coverage and avg savings per category per distributor."""
+    all_eds = _get_all_editions(session)
+    slugs = sorted(all_eds.keys())
+    if len(slugs) < 2:
+        return AnalyticsResponse(view="cross_rip_coverage", edition_current="", total=0)
+
+    slug_a, slug_b = slugs[0], slugs[1]
+    ed_a, _, dist_a = all_eds[slug_a]
+    ed_b, _, dist_b = all_eds[slug_b]
+
+    def _rip_stats(eid):
+        rows = session.execute(
+            select(
+                Category.display_name.label("cat"),
+                func.count(func.distinct(ProductEdition.id)).label("total"),
+                func.count(func.distinct(RipOffer.product_edition_id)).label("rip_count"),
+                func.avg(RipOffer.save_amount).label("avg_save"),
+            )
+            .select_from(ProductEdition)
+            .join(Category, Category.id == ProductEdition.category_id)
+            .outerjoin(RipOffer, RipOffer.product_edition_id == ProductEdition.id)
+            .where(ProductEdition.book_edition_id == eid)
+            .group_by(Category.display_name)
+            .having(func.count(func.distinct(ProductEdition.id)) >= 3)
+        ).all()
+        return {
+            r.cat: (r.total, r.rip_count, float(r.avg_save) if r.avg_save else None)
+            for r in rows
+        }
+
+    stats_a = _rip_stats(ed_a.id)
+    stats_b = _rip_stats(ed_b.id)
+
+    all_cats = sorted(set(stats_a.keys()) | set(stats_b.keys()))
+    result = []
+    for cat in all_cats:
+        total_a, rip_a, avg_save_a = stats_a.get(cat, (0, 0, None))
+        total_b, rip_b, avg_save_b = stats_b.get(cat, (0, 0, None))
+        cov_a = round(rip_a / total_a * 100, 1) if total_a > 0 else None
+        cov_b = round(rip_b / total_b * 100, 1) if total_b > 0 else None
+        result.append(CrossRipRow(
+            category=cat,
+            rip_count_a=rip_a,
+            rip_count_b=rip_b,
+            avg_save_a=_money(avg_save_a),
+            avg_save_b=_money(avg_save_b),
+            coverage_pct_a=cov_a,
+            coverage_pct_b=cov_b,
+            distributor_a_slug=dist_a.slug,
+            distributor_a_name=dist_a.name,
+            distributor_b_slug=dist_b.slug,
+            distributor_b_name=dist_b.name,
+        ))
+
+    # Sort by difference in coverage
+    result.sort(key=lambda r: abs((r.coverage_pct_a or 0) - (r.coverage_pct_b or 0)), reverse=True)
+    result = result[:limit]
+
+    return AnalyticsResponse(
+        view="cross_rip_coverage",
+        edition_current=f"{_label(ed_a)} / {_label(ed_b)}",
+        total=len(result),
+        cross_rip_rows=result,
+        distributors=[slug_a, slug_b],
+    )
+
+
+def _cross_brand_availability(session: Session, limit: int, user: dict):
+    """Brand presence comparison across distributors."""
+    all_eds = _get_all_editions(session)
+    slugs = sorted(all_eds.keys())
+    if len(slugs) < 2:
+        return AnalyticsResponse(view="cross_brand_availability", edition_current="", total=0)
+
+    slug_a, slug_b = slugs[0], slugs[1]
+    ed_a, _, dist_a = all_eds[slug_a]
+    ed_b, _, dist_b = all_eds[slug_b]
+
+    def _brand_counts(eid):
+        rows = session.execute(
+            select(
+                Brand.display_name.label("brand"),
+                func.count(ProductEdition.id).label("cnt"),
+            )
+            .join(Brand, Brand.id == ProductEdition.brand_id)
+            .where(ProductEdition.book_edition_id == eid)
+            .group_by(Brand.display_name)
+        ).all()
+        return {r.brand: r.cnt for r in rows}
+
+    counts_a = _brand_counts(ed_a.id)
+    counts_b = _brand_counts(ed_b.id)
+
+    all_brands = sorted(set(counts_a.keys()) | set(counts_b.keys()))
+    result = []
+    for brand in all_brands:
+        ca = counts_a.get(brand, 0)
+        cb = counts_b.get(brand, 0)
+        exclusive = None
+        if ca > 0 and cb == 0:
+            exclusive = slug_a
+        elif cb > 0 and ca == 0:
+            exclusive = slug_b
+        result.append(CrossBrandRow(
+            brand=brand,
+            count_a=ca,
+            count_b=cb,
+            exclusive_to=exclusive,
+            distributor_a_slug=dist_a.slug,
+            distributor_a_name=dist_a.name,
+            distributor_b_slug=dist_b.slug,
+            distributor_b_name=dist_b.name,
+        ))
+
+    # Sort: exclusives first, then by total count descending
+    result.sort(key=lambda r: (r.exclusive_to is None, -(r.count_a + r.count_b)))
+    result = result[:limit]
+
+    return AnalyticsResponse(
+        view="cross_brand_availability",
+        edition_current=f"{_label(ed_a)} / {_label(ed_b)}",
+        total=len(result),
+        cross_brand_rows=result,
+        distributors=[slug_a, slug_b],
+    )
+
+
+def _cross_price_compare(session: Session, limit: int, user: dict):
+    """Compare prices for linked products across distributors (V2)."""
+    all_eds = _get_all_editions(session)
+    slugs = sorted(all_eds.keys())
+    if len(slugs) < 2:
+        return AnalyticsResponse(view="cross_price_compare", edition_current="", total=0)
+
+    slug_a, slug_b = slugs[0], slugs[1]
+    ed_a, _, dist_a = all_eds[slug_a]
+    ed_b, _, dist_b = all_eds[slug_b]
+
+    # Find products with link_id set, get their current edition data
+    ProdA = aliased(Product, name="prod_a")
+    ProdB = aliased(Product, name="prod_b")
+    PeA = aliased(ProductEdition, name="pe_a")
+    PeB = aliased(ProductEdition, name="pe_b")
+    RipA = aliased(RipOffer, name="rip_a")
+    RipB = aliased(RipOffer, name="rip_b")
+
+    # Subqueries for best RIP per product_edition
+    best_rip_a = (
+        select(func.max(RipA.save_amount))
+        .where(RipA.product_edition_id == PeA.id)
+        .correlate(PeA)
+        .scalar_subquery()
+    )
+    best_rip_b = (
+        select(func.max(RipB.save_amount))
+        .where(RipB.product_edition_id == PeB.id)
+        .correlate(PeB)
+        .scalar_subquery()
+    )
+
+    stmt = (
+        select(
+            ProductLink.id.label("link_id"),
+            ProductLink.canonical_description,
+            ProductLink.size,
+            Brand.display_name.label("brand"),
+            Category.display_name.label("category"),
+            ProdA.code.label("code_a"),
+            ProdB.code.label("code_b"),
+            PeA.case_cost.label("cost_a"),
+            PeB.case_cost.label("cost_b"),
+            best_rip_a.label("rip_a"),
+            best_rip_b.label("rip_b"),
+        )
+        .select_from(ProductLink)
+        .join(ProdA, and_(ProdA.link_id == ProductLink.id, ProdA.distributor_id == dist_a.id))
+        .join(ProdB, and_(ProdB.link_id == ProductLink.id, ProdB.distributor_id == dist_b.id))
+        .join(PeA, and_(PeA.product_id == ProdA.id, PeA.book_edition_id == ed_a.id))
+        .join(PeB, and_(PeB.product_id == ProdB.id, PeB.book_edition_id == ed_b.id))
+        .outerjoin(Brand, Brand.id == ProductLink.brand_id)
+        .outerjoin(Category, Category.id == ProductLink.category_id)
+        .where(
+            PeA.case_cost.is_not(None),
+            PeB.case_cost.is_not(None),
+        )
+        .order_by(desc(func.abs(PeA.case_cost - PeB.case_cost)))
+        .limit(limit)
+    )
+
+    rows = session.execute(stmt).all()
+    result = []
+    for r in rows:
+        cost_a = float(r.cost_a) if r.cost_a else None
+        cost_b = float(r.cost_b) if r.cost_b else None
+        diff = None
+        pct_diff = None
+        cheaper = None
+        if cost_a is not None and cost_b is not None:
+            diff = round(cost_a - cost_b, 2)
+            avg_cost = (cost_a + cost_b) / 2
+            pct_diff = round(diff / avg_cost * 100, 1) if avg_cost > 0 else None
+            cheaper = slug_a if cost_a < cost_b else slug_b if cost_b < cost_a else None
+
+        rip_a = float(r.rip_a) if r.rip_a else None
+        rip_b = float(r.rip_b) if r.rip_b else None
+        eff_a = _money(max(0, cost_a - rip_a)) if cost_a and rip_a else _money(cost_a)
+        eff_b = _money(max(0, cost_b - rip_b)) if cost_b and rip_b else _money(cost_b)
+
+        result.append(CrossPriceRow(
+            link_id=str(r.link_id),
+            canonical_description=r.canonical_description,
+            size=r.size,
+            brand=r.brand,
+            category=r.category,
+            code_a=r.code_a,
+            code_b=r.code_b,
+            case_cost_a=_money(cost_a),
+            case_cost_b=_money(cost_b),
+            diff=_money(diff),
+            pct_diff=pct_diff,
+            cheaper=cheaper,
+            rip_save_a=_money(rip_a),
+            rip_save_b=_money(rip_b),
+            effective_a=eff_a,
+            effective_b=eff_b,
+            distributor_a_slug=dist_a.slug,
+            distributor_a_name=dist_a.name,
+            distributor_b_slug=dist_b.slug,
+            distributor_b_name=dist_b.name,
+        ))
+
+    return AnalyticsResponse(
+        view="cross_price_compare",
+        edition_current=f"{_label(ed_a)} / {_label(ed_b)}",
+        total=len(result),
+        cross_price_rows=result,
+        distributors=[slug_a, slug_b],
+    )
+
+
+# -- Handler registries -------------------------------------------------------
+
+_SINGLE_HANDLERS = {
     "price_drops": _price_drops,
     "price_increases": _price_increases,
     "new_rips": _new_rips,
@@ -740,3 +1242,13 @@ _HANDLERS = {
     "discontinued": _discontinued,
     "watchlist_movers": _watchlist_movers,
 }
+
+_CROSS_HANDLERS = {
+    "cross_category_compare": _cross_category_compare,
+    "cross_rip_coverage": _cross_rip_coverage,
+    "cross_brand_availability": _cross_brand_availability,
+    "cross_price_compare": _cross_price_compare,
+}
+
+# Keep legacy name for backwards compat
+_HANDLERS = {**_SINGLE_HANDLERS, **_CROSS_HANDLERS}

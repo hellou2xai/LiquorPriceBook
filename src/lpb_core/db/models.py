@@ -220,12 +220,35 @@ class IngestRun(Base):
     )
 
 
+class ProductLink(Base):
+    """Cross-distributor product link.
+
+    Groups equivalent products from different distributors (same liquid, size,
+    pack). Populated by the fuzzy matcher script.
+    """
+
+    __tablename__ = "product_links"
+
+    id: Mapped[UUID] = _uuid_pk()
+    canonical_description: Mapped[str | None] = mapped_column(String(512))
+    size: Mapped[str | None] = mapped_column(String(32))
+    pack: Mapped[int | None] = mapped_column()
+    brand_id: Mapped[UUID | None] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("brands.id", ondelete="SET NULL")
+    )
+    category_id: Mapped[UUID | None] = mapped_column(
+        PgUUID(as_uuid=True), ForeignKey("categories.id", ondelete="SET NULL")
+    )
+    match_method: Mapped[str] = mapped_column(String(32), default="auto")
+    created_at: Mapped[datetime] = _now()
+
+
 class Product(Base):
     """Canonical product, scoped per distributor.
 
     The same liquid SKU from different distributors carries different pricing,
     RIP eligibility, and ordering terms - they're not the same row. Cross-
-    distributor links land in ``product_links`` (v2).
+    distributor links use ``link_id`` pointing to ``product_links``.
     """
 
     __tablename__ = "products"
@@ -237,6 +260,10 @@ class Product(Base):
         nullable=False,
     )
     code: Mapped[str] = mapped_column(String(32), nullable=False)
+    link_id: Mapped[UUID | None] = mapped_column(
+        PgUUID(as_uuid=True),
+        ForeignKey("product_links.id", ondelete="SET NULL"),
+    )
     first_seen_in_edition_id: Mapped[UUID | None] = mapped_column(
         PgUUID(as_uuid=True), ForeignKey("book_editions.id", ondelete="SET NULL")
     )

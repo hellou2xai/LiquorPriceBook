@@ -648,6 +648,8 @@ export type AnalyticsRow = {
   is_closeout: boolean;
   closeout_pct_off: number | null;
   tag: string | null;
+  distributor_slug: string | null;
+  distributor_name: string | null;
 };
 
 export type CategoryTrendRow = {
@@ -659,6 +661,71 @@ export type CategoryTrendRow = {
   avg_pct_change: number;
   drops: number;
   increases: number;
+  distributor_slug: string | null;
+  distributor_name: string | null;
+};
+
+export type CrossCategoryRow = {
+  category: string;
+  product_count_a: number;
+  product_count_b: number;
+  avg_cost_a: string | null;
+  avg_cost_b: string | null;
+  diff: string | null;
+  pct_diff: number | null;
+  cheaper: string | null;
+  distributor_a_slug: string;
+  distributor_a_name: string;
+  distributor_b_slug: string;
+  distributor_b_name: string;
+};
+
+export type CrossRipRow = {
+  category: string;
+  rip_count_a: number;
+  rip_count_b: number;
+  avg_save_a: string | null;
+  avg_save_b: string | null;
+  coverage_pct_a: number | null;
+  coverage_pct_b: number | null;
+  distributor_a_slug: string;
+  distributor_a_name: string;
+  distributor_b_slug: string;
+  distributor_b_name: string;
+};
+
+export type CrossBrandRow = {
+  brand: string;
+  count_a: number;
+  count_b: number;
+  exclusive_to: string | null;
+  distributor_a_slug: string;
+  distributor_a_name: string;
+  distributor_b_slug: string;
+  distributor_b_name: string;
+};
+
+export type CrossPriceRow = {
+  link_id: string;
+  canonical_description: string | null;
+  size: string | null;
+  brand: string | null;
+  category: string | null;
+  code_a: string | null;
+  code_b: string | null;
+  case_cost_a: string | null;
+  case_cost_b: string | null;
+  diff: string | null;
+  pct_diff: number | null;
+  cheaper: string | null;
+  rip_save_a: string | null;
+  rip_save_b: string | null;
+  effective_a: string | null;
+  effective_b: string | null;
+  distributor_a_slug: string;
+  distributor_a_name: string;
+  distributor_b_slug: string;
+  distributor_b_name: string;
 };
 
 export type AnalyticsResponse = {
@@ -668,6 +735,11 @@ export type AnalyticsResponse = {
   total: number;
   rows: AnalyticsRow[];
   category_rows: CategoryTrendRow[];
+  cross_category_rows: CrossCategoryRow[];
+  cross_rip_rows: CrossRipRow[];
+  cross_brand_rows: CrossBrandRow[];
+  cross_price_rows: CrossPriceRow[];
+  distributors: string[];
 };
 
 export type AnalyticsView =
@@ -680,7 +752,11 @@ export type AnalyticsView =
   | "category_trends"
   | "new_products"
   | "discontinued"
-  | "watchlist_movers";
+  | "watchlist_movers"
+  | "cross_category_compare"
+  | "cross_rip_coverage"
+  | "cross_brand_availability"
+  | "cross_price_compare";
 
 export const analyticsApi = {
   query: (view: AnalyticsView, limit = 100, distributor = "nj-allied") =>
