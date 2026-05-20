@@ -368,6 +368,14 @@ def _classify_line(text: str) -> str:
         if upper == region:
             return "header"
 
+    # Price period labels: "06/09-06/10 ONLY", "ALL MONTH", "LIMITED TIME OFFER"
+    if re.match(r"^\d{2}/\d{2}\s*-\s*\d{2}/\d{2}", stripped):
+        return "price"
+    if upper in ("ALL MONTH", "LIMITED TIME OFFER", "SPECTACULAR"):
+        return "price"
+    if upper.endswith("ONLY") and re.search(r"\d{2}/\d{2}", stripped):
+        return "price"
+
     # Brand or description text — if all uppercase and no dollar signs
     if "$" not in stripped and not re.search(r"\d{4,}", stripped):
         words = stripped.split()
@@ -632,6 +640,7 @@ def _parse_lane(
     current_item = None
     current_rips = []
     current_prices = []
+    saw_price_after_item = False  # Track if we've seen prices for the current item
 
     def _flush():
         nonlocal current_item, current_description, current_rips, current_prices
@@ -741,6 +750,7 @@ def _parse_lane(
 
         products.append(row)
         current_item = None
+        current_description = None
         current_rips = []
         current_prices = []
 
@@ -784,6 +794,7 @@ def _parse_lane(
 
         elif line_type == "item":
             _flush()
+            saw_price_after_item = False
             parsed = _parse_item_line(text)
             if parsed:
                 current_item = parsed
@@ -796,15 +807,20 @@ def _parse_lane(
             price = _parse_price_line(text)
             if price:
                 current_prices.append(price)
+            if current_item is not None:
+                saw_price_after_item = True
 
         elif line_type == "description":
-            if current_item is None:
-                # Description before item code — this is the product name/variant
+            if current_item is None or saw_price_after_item:
+                # Either before item code, or after pricing (next product's description).
+                # If after pricing, flush current item first.
+                if saw_price_after_item:
+                    _flush()
+                    saw_price_after_item = False
                 if current_description:
                     current_description += " " + text.strip()
                 else:
                     current_description = text.strip()
-            # After item code, descriptions are continuation text (ignore for now)
 
     # Flush last product
     _flush()
