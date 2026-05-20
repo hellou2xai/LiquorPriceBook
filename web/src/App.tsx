@@ -3,6 +3,7 @@ import { Routes, Route, NavLink, Navigate, useLocation } from "react-router-dom"
 
 import ProtectedRoute from "./components/ProtectedRoute";
 import { useAuth } from "./lib/auth";
+import { DistributorProvider, useDistributor } from "./lib/distributor";
 
 import Dashboard from "./routes/Dashboard";
 import Catalog from "./routes/Catalog";
@@ -47,8 +48,33 @@ function NavIcon({ d }: { d: string }) {
   );
 }
 
+function DistributorSelector() {
+  const { distributor, setDistributor, distributors } = useDistributor();
+  return (
+    <div className="px-3 py-3 border-t border-white/10">
+      <label className="block text-[10px] uppercase tracking-wider text-zinc-400 mb-1.5 px-1">Distributor</label>
+      <div className="flex gap-1">
+        {distributors.map((d) => (
+          <button
+            key={d.slug}
+            onClick={() => setDistributor(d.slug)}
+            className={`flex-1 px-2 py-1.5 rounded-md text-xs font-medium transition-colors ${
+              distributor === d.slug
+                ? "bg-brand-orange text-white"
+                : "text-zinc-300 hover:text-white hover:bg-white/10"
+            }`}
+          >
+            {d.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function Shell({ children }: { children: React.ReactNode }) {
   const { isAuthed } = useAuth();
+  const { distributorLabel } = useDistributor();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
 
@@ -127,6 +153,9 @@ function Shell({ children }: { children: React.ReactNode }) {
           ))}
         </nav>
 
+        {/* Distributor selector */}
+        <DistributorSelector />
+
         {/* Bottom nav (Settings) */}
         <div className="border-t border-white/10 px-3 py-3 space-y-1 flex-shrink-0">
           {BOTTOM_NAV.map((item) => (
@@ -163,7 +192,7 @@ function Shell({ children }: { children: React.ReactNode }) {
               <span className="font-semibold tracking-tight text-sm text-brand-navy">CELR Price Book</span>
             </div>
             <div className="ml-auto flex items-center gap-2">
-              <span className="hidden sm:inline text-xs text-zinc-500">NJ Liquor Retail</span>
+              <span className="hidden sm:inline text-xs text-zinc-500">{distributorLabel} · NJ</span>
               <span className="h-2 w-2 rounded-full bg-emerald-500"></span>
             </div>
           </div>
@@ -190,6 +219,7 @@ const protect = (el: React.ReactNode) => <ProtectedRoute>{el}</ProtectedRoute>;
 
 export default function App() {
   return (
+    <DistributorProvider>
     <Shell>
       <Routes>
         <Route path="/login" element={<Login />} />
@@ -211,5 +241,6 @@ export default function App() {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Shell>
+    </DistributorProvider>
   );
 }

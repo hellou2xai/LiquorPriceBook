@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { specialsApi } from "../lib/api";
 import type { WebSpecial } from "../lib/api";
 import { money } from "../lib/fmt";
+import { useDistributor } from "../lib/distributor";
 
 function fmtDate(d: string): string {
   const dt = new Date(d + "T00:00:00");
@@ -46,10 +47,11 @@ type Filter = "all" | "pricing" | "rip" | "expiring";
 
 export default function Specials() {
   const [filter, setFilter] = useState<Filter>("all");
+  const { distributor } = useDistributor();
 
   const q = useQuery({
-    queryKey: ["specials-active"],
-    queryFn: () => specialsApi.active(),
+    queryKey: ["specials-active", distributor],
+    queryFn: () => specialsApi.active(distributor),
     refetchInterval: 5 * 60_000,
   });
 

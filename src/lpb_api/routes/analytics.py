@@ -122,6 +122,7 @@ def _label(ed: BookEdition) -> str:
 def get_analytics(
     view: str = Query(..., description="Analysis view"),
     limit: int = Query(100, ge=1, le=500),
+    distributor: str = Query("nj-allied"),
     user: dict = Depends(get_current_user),
     session: Session = Depends(get_session),
 ):
@@ -131,7 +132,7 @@ def get_analytics(
             detail=f"Invalid view. Valid: {', '.join(sorted(VALID_VIEWS))}",
         )
 
-    current, previous = _get_editions(session)
+    current, previous = _get_editions(session, slug=distributor)
 
     handler = _HANDLERS[view]
     return handler(session, current, previous, limit, user)

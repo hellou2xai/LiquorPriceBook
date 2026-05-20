@@ -4,11 +4,13 @@ import { useQuery } from "@tanstack/react-query";
 
 import { insightsApi, watchlistApi } from "../lib/api";
 import type { CloseoutRow } from "../lib/api";
+import { useDistributor } from "../lib/distributor";
 import { money } from "../lib/fmt";
 import FavoriteButton from "../components/FavoriteButton";
 import SortableTable, { useSort, Column } from "../components/SortableTable";
 
 export default function Closeouts() {
+  const { distributor } = useDistributor();
   const [search, setSearch] = useState("");
   const [minPct, setMinPct] = useState(0);
   const [daysFilter, setDaysFilter] = useState<"" | "new" | "aging">("");
@@ -24,8 +26,8 @@ export default function Closeouts() {
   }, [wlQ.data]);
 
   const q = useQuery({
-    queryKey: ["closeouts"],
-    queryFn: () => insightsApi.closeouts({ limit: 500 }),
+    queryKey: ["closeouts", { distributor }],
+    queryFn: () => insightsApi.closeouts({ limit: 500, distributor }),
   });
 
   const filteredRows = useMemo(() => {

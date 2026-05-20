@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { watchlistApi, ordersApi } from "../lib/api";
 import type { OrderItem, OrderSummary } from "../lib/api";
 import { money } from "../lib/fmt";
+import { useDistributor } from "../lib/distributor";
 import FavoriteButton from "../components/FavoriteButton";
 
 type SortKey = "name" | "price_asc" | "price_desc" | "rip_save" | "buy_signal";
@@ -398,6 +399,7 @@ export default function Watchlist() {
   const [templateName, setTemplateName] = useState("");
   const [history, setHistoryState] = useState<OrderHistoryEntry[]>(loadHistory);
   const [showHistory, setShowHistory] = useState(false);
+  const { distributor } = useDistributor();
 
   useMemo(() => {
     const t = setTimeout(() => setDebouncedSearch(search), 250);
@@ -405,8 +407,8 @@ export default function Watchlist() {
   }, [search]);
 
   const q = useQuery({
-    queryKey: ["watchlist-order", { search: debouncedSearch, category: categoryFilter }],
-    queryFn: () => watchlistApi.order({ search: debouncedSearch || undefined, category: categoryFilter || undefined }),
+    queryKey: ["watchlist-order", { search: debouncedSearch, category: categoryFilter }, distributor],
+    queryFn: () => watchlistApi.order({ search: debouncedSearch || undefined, category: categoryFilter || undefined, distributor }),
     placeholderData: (prev) => prev,
   });
 

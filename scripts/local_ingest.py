@@ -68,8 +68,11 @@ def _compute_content_hash(pdf_bytes: bytes) -> str:
     return hashlib.sha256(pdf_bytes).hexdigest()
 
 
-def _scrape_locally(pdf_path: Path) -> dict[str, list[dict]]:
-    from templates.NjAllied import scrape_pdf
+def _scrape_locally(pdf_path: Path, distributor: str) -> dict[str, list[dict]]:
+    if distributor == "nj-fedway":
+        from templates.Fedway import scrape_pdf
+    else:
+        from templates.NjAllied import scrape_pdf
     results, _diag = scrape_pdf(pdf_path, source_name=pdf_path.name)
     return results
 
@@ -168,7 +171,7 @@ def main(argv: list[str] | None = None) -> int:
 
     # ---- Stage 1: Scrape locally (unlimited RAM) ----
     log.info("Scraping PDF locally...")
-    sections = _scrape_locally(pdf_path)
+    sections = _scrape_locally(pdf_path, args.distributor)
     total_rows = sum(len(v) for v in sections.values())
     for section, rows in sections.items():
         log.info("  %-24s %6d rows", section, len(rows))

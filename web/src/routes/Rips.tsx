@@ -4,11 +4,13 @@ import { useQuery } from "@tanstack/react-query";
 
 import { insightsApi, watchlistApi } from "../lib/api";
 import type { RipRow } from "../lib/api";
+import { useDistributor } from "../lib/distributor";
 import { money } from "../lib/fmt";
 import FavoriteButton from "../components/FavoriteButton";
 import SortableTable, { useSort, Column } from "../components/SortableTable";
 
 export default function Rips() {
+  const { distributor } = useDistributor();
   const [search, setSearch] = useState("");
   const [minPct, setMinPct] = useState(0);
   const [tierMax, setTierMax] = useState<number | "">("");
@@ -26,12 +28,13 @@ export default function Rips() {
   }, [wlQ.data]);
 
   const ripsQ = useQuery({
-    queryKey: ["rips", { minPct, tierMax }],
+    queryKey: ["rips", { minPct, tierMax, distributor }],
     queryFn: () =>
       insightsApi.rips({
         min_pct: minPct || undefined,
         tier_cases_max: typeof tierMax === "number" ? tierMax : undefined,
         limit: 500,
+        distributor,
       }),
   });
 

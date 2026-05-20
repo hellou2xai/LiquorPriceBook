@@ -338,8 +338,8 @@ def qa_price_history(api: APIClient, report: QAReport, products: list):
             rip = pt.get("best_rip_save")
             eff = pt.get("effective_cost")
             if cc and rip and eff:
-                expected = round(cc - rip, 2)
-                actual = round(eff, 2)
+                expected = round(float(cc) - float(rip), 2)
+                actual = round(float(eff), 2)
                 if abs(expected - actual) > 0.02:
                     report.add(agent, "error",
                                f"effective_cost mismatch for {code} in {pt['edition_label']}",

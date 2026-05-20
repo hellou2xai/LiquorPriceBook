@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import { insightsApi } from "../lib/api";
 import type { ComboRow } from "../lib/api";
+import { useDistributor } from "../lib/distributor";
 import { money } from "../lib/fmt";
 import SortableTable, { useSort, Column } from "../components/SortableTable";
 
@@ -49,18 +50,20 @@ const columns: Column<ComboRow>[] = [
 ];
 
 export default function Combos() {
+  const { distributor } = useDistributor();
   const [search, setSearch] = useState("");
   const [selectedCat, setSelectedCat] = useState("");
 
   const { sort, toggle, sorted } = useSort<ComboRow>({ key: "sku", direction: "asc" });
 
   const combosQ = useQuery({
-    queryKey: ["combos", { search, subcategory: selectedCat }],
+    queryKey: ["combos", { search, subcategory: selectedCat, distributor }],
     queryFn: () =>
       insightsApi.combos({
         search: search || undefined,
         subcategory: selectedCat || undefined,
         limit: 1000,
+        distributor,
       }),
   });
 

@@ -437,7 +437,8 @@ export const catalogApi = {
 };
 
 export const insightsApi = {
-  summary: () => api<DashboardSummary>("/api/v1/dashboard/summary"),
+  summary: (distributor = "nj-allied") =>
+    api<DashboardSummary>(`/api/v1/dashboard/summary${_qs({ distributor })}`),
   rips: (params: {
     distributor?: string;
     category?: string[];
@@ -481,7 +482,7 @@ export const watchlistApi = {
     ),
   remove: (code: string, distributor = "nj-allied") =>
     api<void>(`/api/v1/watchlist/items/${code}${_qs({ distributor })}`, { method: "DELETE" }),
-  order: (params: { search?: string; category?: string; sort?: string } = {}) =>
+  order: (params: { search?: string; category?: string; sort?: string; distributor?: string } = {}) =>
     api<OrderItem[]>(`/api/v1/watchlist/order${_qs(params)}`),
 };
 
@@ -680,8 +681,8 @@ export type AnalyticsView =
   | "watchlist_movers";
 
 export const analyticsApi = {
-  query: (view: AnalyticsView, limit = 100) =>
-    api<AnalyticsResponse>(`/api/v1/analytics${_qs({ view, limit })}`),
+  query: (view: AnalyticsView, limit = 100, distributor = "nj-allied") =>
+    api<AnalyticsResponse>(`/api/v1/analytics${_qs({ view, limit, distributor })}`),
 };
 
 // ---------- Price History ----------
@@ -716,8 +717,8 @@ export type PriceHistoryResponse = {
 };
 
 export const priceHistoryApi = {
-  get: (code: string) =>
-    api<PriceHistoryResponse>(`/api/v1/catalog/${code}/price-history`),
+  get: (code: string, distributor = "nj-allied") =>
+    api<PriceHistoryResponse>(`/api/v1/catalog/${code}/price-history${_qs({ distributor })}`),
 };
 
 // ---------- Sales Reps ----------

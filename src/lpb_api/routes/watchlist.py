@@ -195,11 +195,12 @@ def watchlist_order(
     search: str | None = Query(None),  # noqa: B008
     category: str | None = Query(None),  # noqa: B008
     sort: str = Query("name", pattern="^(name|case_cost_asc|case_cost_desc|rip_save)$"),  # noqa: B008
+    distributor: str = Query("nj-allied"),  # noqa: B008
     user: dict = Depends(get_current_user),  # noqa: B008
     session: Session = Depends(get_session),  # noqa: B008
 ):
     """Enriched watchlist with full product details and RIP info for the order page."""
-    edition = _current_edition(session, "nj-allied")
+    edition = _current_edition(session, distributor)
 
     # Subquery: best (highest save_amount) RIP per product_edition
     top_rip_sub = (
@@ -343,7 +344,7 @@ def watchlist_order(
     prev_editions = session.execute(
         select(BookEdition)
         .join(Distributor, Distributor.id == BookEdition.distributor_id)
-        .where(Distributor.slug == "nj-allied")
+        .where(Distributor.slug == distributor)
         .order_by(desc(BookEdition.year), desc(BookEdition.month))
         .limit(2)
     ).scalars().all()

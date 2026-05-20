@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { catalogApi, watchlistApi } from "../lib/api";
 import type { Facets } from "../lib/api";
 import { money, pct, pctClass } from "../lib/fmt";
+import { useDistributor } from "../lib/distributor";
 import FavoriteButton from "../components/FavoriteButton";
 
 const PAGE_SIZE = 50;
@@ -187,10 +188,12 @@ function FilterSidebar({
   filters,
   onChange,
   facets,
+  distributor,
 }: {
   filters: Filters;
   onChange: (f: Filters) => void;
   facets: Facets | undefined;
+  distributor: string | null | undefined;
 }) {
   const [priceMin, setPriceMin] = useState(filters.minPrice);
   const [priceMax, setPriceMax] = useState(filters.maxPrice);
@@ -291,10 +294,10 @@ function FilterSidebar({
       </FilterSection>
 
       {/* Category */}
-      <CategoriesFilter filters={filters} onChange={onChange} />
+      <CategoriesFilter filters={filters} onChange={onChange} distributor={distributor} />
 
       {/* Brand */}
-      <BrandsFilter filters={filters} onChange={onChange} facets={facets} />
+      <BrandsFilter filters={filters} onChange={onChange} facets={facets} distributor={distributor} />
 
       {/* Size */}
       {facets && facets.sizes.length > 0 && (
@@ -318,13 +321,15 @@ function FilterSidebar({
 function CategoriesFilter({
   filters,
   onChange,
+  distributor,
 }: {
   filters: Filters;
   onChange: (f: Filters) => void;
+  distributor: string | null | undefined;
 }) {
   const categoriesQ = useQuery({
-    queryKey: ["categories"],
-    queryFn: () => catalogApi.categories(),
+    queryKey: ["categories", distributor],
+    queryFn: () => catalogApi.categories(distributor ?? undefined),
     staleTime: 5 * 60_000,
   });
 
@@ -359,10 +364,12 @@ function BrandsFilter({
   filters,
   onChange,
   facets,
+  distributor,
 }: {
   filters: Filters;
   onChange: (f: Filters) => void;
   facets: Facets | undefined;
+  distributor: string | null | undefined;
 }) {
   const [brandSearch, setBrandSearch] = useState("");
   const [debouncedBrandSearch, setDebouncedBrandSearch] = useState("");
@@ -374,9 +381,10 @@ function BrandsFilter({
 
   // Server-side brand search when user types
   const brandsQ = useQuery({
-    queryKey: ["brands-search", debouncedBrandSearch],
+    queryKey: ["brands-search", distributor, debouncedBrandSearch],
     queryFn: () =>
       catalogApi.brands({
+        distributor: distributor ?? undefined,
         q: debouncedBrandSearch || undefined,
         limit: 50,
       }),
@@ -441,6 +449,7 @@ function BrandsFilter({
 // ══════════════════ Main Component ══════════════════
 
 export default function Catalog() {
+  const { distributor } = useDistributor();
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [page, setPage] = useState(0);
@@ -467,14 +476,15 @@ export default function Catalog() {
   }, [wlQ.data]);
 
   const facetsQ = useQuery({
-    queryKey: ["catalog-facets"],
-    queryFn: () => catalogApi.facets(),
+    queryKey: ["catalog-facets", distributor],
+    queryFn: () => catalogApi.facets(distributor),
     staleTime: 5 * 60_000,
   });
 
   const productsQ = useQuery({
     queryKey: [
       "products",
+      distributor,
       {
         search: debouncedSearch,
         categories: [...filters.categories],
@@ -490,6 +500,7 @@ export default function Catalog() {
     ],
     queryFn: () =>
       catalogApi.products({
+        distributor,
         search: debouncedSearch || undefined,
         category: filters.categories.size > 0 ? [...filters.categories] : undefined,
         brand: filters.brands.size > 0 ? [...filters.brands] : undefined,
@@ -590,6 +601,7 @@ export default function Catalog() {
             filters={filters}
             onChange={updateFilters}
             facets={facetsQ.data}
+            distributor={distributor}
           />
         </div>
 

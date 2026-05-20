@@ -3,55 +3,57 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { aiApi, catalogApi, notesApi, priceHistoryApi, watchlistApi } from "../lib/api";
 import { money, pct, pctClass } from "../lib/fmt";
+import { useDistributor } from "../lib/distributor";
 import PriceChart from "../components/PriceChart";
 
 export default function ProductDetail() {
   const { code = "" } = useParams<{ code: string }>();
   const qc = useQueryClient();
+  const { distributor } = useDistributor();
 
   const detailQ = useQuery({
-    queryKey: ["product", code],
-    queryFn: () => catalogApi.product(code),
+    queryKey: ["product", code, distributor],
+    queryFn: () => catalogApi.product(code, distributor),
     enabled: !!code,
   });
 
   const verdictQ = useQuery({
-    queryKey: ["verdict", code],
-    queryFn: () => aiApi.verdict(code),
+    queryKey: ["verdict", code, distributor],
+    queryFn: () => aiApi.verdict(code, distributor),
     enabled: !!code,
   });
 
   const watchQ = useQuery({
-    queryKey: ["watchlist"],
+    queryKey: ["watchlist", distributor],
     queryFn: () => watchlistApi.list(),
     staleTime: 30_000,
   });
   const onWatchlist = (watchQ.data ?? []).some((w) => w.product_code === code);
 
   const notesQ = useQuery({
-    queryKey: ["notes", code],
-    queryFn: () => notesApi.list(code),
+    queryKey: ["notes", code, distributor],
+    queryFn: () => notesApi.list(code, distributor),
     enabled: !!code,
   });
 
   const addWatch = useMutation({
-    mutationFn: () => watchlistApi.add({ code }),
+    mutationFn: () => watchlistApi.add({ code, distributor }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["watchlist"] }),
   });
   const removeWatch = useMutation({
-    mutationFn: () => watchlistApi.remove(code),
+    mutationFn: () => watchlistApi.remove(code, distributor),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["watchlist"] }),
   });
 
   const priceHistQ = useQuery({
-    queryKey: ["price-history", code],
-    queryFn: () => priceHistoryApi.get(code),
+    queryKey: ["price-history", code, distributor],
+    queryFn: () => priceHistoryApi.get(code, distributor),
     enabled: !!code,
   });
 
   const addNote = useMutation({
-    mutationFn: (body: string) => notesApi.add(code, body),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["notes", code] }),
+    mutationFn: (body: string) => notesApi.add(code, body, distributor),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["notes", code, distributor] }),
   });
 
   if (!detailQ.data && detailQ.isLoading) {

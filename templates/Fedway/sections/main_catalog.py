@@ -1,0 +1,657 @@
+"""Fedway main catalog parser (Spirits, Wine, Cans & Cocktails, etc.).
+
+Fedway catalog pages use a 3-column layout with these elements:
+- **Category headers**: Uppercase text like "WHISKIES", "STILL", "SPARKLING"
+- **Country/region headers**: "USA", "SCOTLAND", "CALIFORNIA", "RUSSIAN RIVER VALLEY"
+- **Brand headers**: Uppercase brand names, sometimes with F/LA/GP/JNC/SC attributes
+- **Product description**: Uppercase text describing the product variant
+- **Item code line**: 4-9 digit code + size + pack + vintage/proof + attributes + buy deal
+- **RIP line**: "RIP: <number>" + tier pricing
+- **Price lines**: "1CASE $X.XX $Y.YY", "1BOTTLE $X.XX", "nCASES $X.XX $Y.YY"
+
+Column headers are:
+  Row 1: ITEM #  SIZE  PACK  VTG/PF  ATTRIB  BUY  BEST RIP
+  Row 2: RIP #   QTY   FMT   PER UNIT UNIT   PER CS PER BT
+"""
+
+from __future__ import annotations
+
+import re
+from collections import defaultdict
+from decimal import Decimal, InvalidOperation
+
+from ..config import CATALOG_LANES_X
+
+# --------------------------------------------------------------------------
+# Constants
+# --------------------------------------------------------------------------
+
+_ITEM_CODE_RE = re.compile(r"^\+?\s*(\d{4,9})\s+(.+)")
+_SIZE_RE = re.compile(
+    r"(\d+(?:\.\d+)?)\s*(ML|LT|OZ|GAL|PK|CL)\b",
+    re.IGNORECASE,
+)
+_PACK_RE = re.compile(r"(\d+)\s*PK\b", re.IGNORECASE)
+_PROOF_RE = re.compile(r"(\d+(?:\.\d+)?)\s*PF\b", re.IGNORECASE)
+_VINTAGE_RE = re.compile(r"\b((?:19|20)\d{2})\b")
+_BUY_DEAL_RE = re.compile(
+    r"(\d+[CB]\\?\$\d+(?:\.\d+)?(?:\s*,\s*\d+[CB]\\?\$\d+(?:\.\d+)?)*)"
+    r"|"
+    r"(AD)\b"
+)
+_RIP_NUM_RE = re.compile(r"RIP:\s*([\d]+(?:\s*,\s*\d+)*)")
+_PRICE_LINE_RE = re.compile(
+    r"(\d+)(CASE|CASES|BOTTLE|BOTTLES|SLEEVE|SLEEVES)\s+"
+    r"\$?([\d.,/OZoz]+)\s*"
+    r"(?:\$?([\d.,]+))?\s*"
+    r"(?:\$?([\d.,]+))?"
+)
+_DOLLAR_RE = re.compile(r"\$([\d,.]+)")
+_ATTRIB_TOKENS = {"F", "LA", "GP", "JNC", "SC", "AD", "K", "E"}
+
+# Category-level header words that indicate a category, not a brand
+_CATEGORY_WORDS = {
+    "WHISKIES", "WHISKEY", "WHISKY", "BOURBON", "RYE", "SCOTCH",
+    "VODKA", "GIN", "RUM", "TEQUILA", "MEZCAL", "BRANDY", "BRANDIES",
+    "COGNAC", "LIQUEURS", "LIQUEUR", "CORDIALS", "BITTERS",
+    "SPIRITS", "WINE", "WINES", "STILL", "SPARKLING", "FORTIFIED",
+    "CHAMPAGNE", "PROSECCO", "CAVA", "SAKE", "SOJU",
+    "READY TO DRINK", "READY TO SERVE", "CIDER", "MALT",
+    "BEER", "NON ALCOHOLIC", "MOCKTAILS", "MIXERS",
+    "GLASSWARE", "CARBONATED", "OIL",
+    "CANS AND COCKTAILS", "MALT PRODUCTS",
+}
+
+# Sub-category words
+_SUBCATEGORY_WORDS = {
+    "BLENDED", "SINGLE MALT", "SINGLE BARREL", "SMALL BATCH",
+    "STRAIGHT", "BONDED", "BARREL PROOF", "CASK STRENGTH",
+    "CABERNET SAUVIGNON", "CHARDONNAY", "PINOT NOIR", "MERLOT",
+    "SAUVIGNON BLANC", "PINOT GRIGIO", "RIESLING", "ROSE",
+    "ZINFANDEL", "SYRAH", "SHIRAZ", "MALBEC", "TEMPRANILLO",
+    "RED BLEND", "WHITE BLEND", "SANGIOVESE", "NEBBIOLO",
+    "BARBARESCO", "BAROLO", "CHIANTI", "BRUNELLO",
+    "TUSCAN RED", "TUSCAN WHITE",
+}
+
+# Country / region names that appear as headers
+_COUNTRY_REGION_WORDS = {
+    "USA", "SCOTLAND", "IRELAND", "CANADA", "JAPAN", "TAIWAN", "SWEDEN",
+    "FRANCE", "ITALY", "SPAIN", "PORTUGAL", "GERMANY", "AUSTRIA",
+    "AUSTRALIA", "NEW ZEALAND", "SOUTH AFRICA", "CHILE", "ARGENTINA",
+    "MEXICO", "BRAZIL", "PERU", "URUGUAY", "COLOMBIA",
+    "ENGLAND", "WALES", "NETHERLANDS", "BELGIUM", "SWITZERLAND",
+    "GREECE", "HUNGARY", "CROATIA", "CZECH REPUBLIC", "POLAND",
+    "INDIA", "CHINA", "KOREA", "THAILAND", "PHILIPPINES",
+    "ISRAEL", "LEBANON", "TURKEY", "MOROCCO",
+    "MARTINIQUE", "BARBADOS", "JAMAICA", "TRINIDAD", "PUERTO RICO",
+    "GUATEMALA", "NICARAGUA", "PANAMA", "DOMINICAN REPUBLIC",
+    "SLOVAKIA", "ROMANIA",
+    # US States / Regions
+    "CALIFORNIA", "OREGON", "WASHINGTON", "NEW YORK", "VIRGINIA",
+    "PENNSYLVANIA", "TEXAS", "KENTUCKY", "TENNESSEE", "COLORADO",
+    "MICHIGAN", "NORTH CAROLINA",
+    # Wine sub-regions
+    "NAPA VALLEY", "SONOMA", "RUSSIAN RIVER VALLEY", "PASO ROBLES",
+    "NORTH COAST", "CENTRAL COAST", "SANTA BARBARA", "WILLAMETTE VALLEY",
+    "COLUMBIA VALLEY", "WALLA WALLA", "FINGER LAKES", "LONG ISLAND",
+    "BORDEAUX", "BURGUNDY", "RHONE", "LOIRE", "ALSACE", "CHAMPAGNE",
+    "LANGUEDOC", "PROVENCE", "SOUTH OF FRANCE",
+    "TUSCANY", "PIEDMONT", "VENETO", "SICILY", "PUGLIA", "ABRUZZO",
+    "FRIULI", "SARDINIA", "UMBRIA", "CAMPANIA", "EMILIA ROMAGNA",
+    "RIOJA", "RIBERA DEL DUERO", "GALICIA", "PRIORAT",
+    "MENDOZA", "MAIPO VALLEY", "COLCHAGUA", "CASABLANCA",
+    "STELLENBOSCH", "SWARTLAND",
+    "BAROSSA VALLEY", "MCLAREN VALE", "MARGARET RIVER", "HUNTER VALLEY",
+    "MARLBOROUGH", "HAWKES BAY", "CENTRAL OTAGO",
+}
+
+# Words that are brand-name modifiers, NOT standalone brands
+_MODIFIER_WORDS = {
+    "AGED", "YEAR", "YEARS", "OLD", "YR", "PROOF", "RESERVE",
+    "LIMITED", "EDITION", "SPECIAL", "SELECT", "PRIVATE",
+    "SMALL", "BATCH", "SINGLE", "BARREL", "CASK", "STRAIGHT",
+    "BONDED", "BOTTLED", "IN", "BOND", "PREMIUM", "LINE",
+    "MADE", "AT", "WINERY", "DISTILLERY", "ESTATE",
+    "EACH", "PACK", "CONTAINS", "COMBO", "SAVINGS",
+    "PK", "CASE", "CASES", "BOTTLE", "BOTTLES",
+    "BLACK", "PINK", "AMBER", "COPPER", "PLATINUM", "BRONZE",
+    "GOLD", "SILVER", "WHITE", "RED", "BLUE", "GREEN",
+    "LIGHT", "DARK", "EXTRA", "ULTRA", "SUPER",
+    "EXTREMELY", "VERY", "DOUBLE", "TRIPLE",
+    "RAIN", "HIGH", "HONEY", "ICE", "CREAM", "RUN",
+    "DOOR", "SPOT", "CLUB", "WAVE", "VOTE", "LIT",
+    "VINTAGE", "CLASSIC", "ORIGINAL", "TRADITIONAL",
+    "NORTH", "SOUTH", "EAST", "WEST", "COAST",
+    "FRENCH", "OAK", "FINISH", "FINISHED",
+    "KENTUCKY", "TENNESSEE", "TEXAS", "AMERICAN",
+    "BBN", "RYE", "WHEAT", "CORN", "MALT",
+    "THE", "OF", "AND", "FROM", "WITH", "FOR", "BY",
+}
+
+
+# --------------------------------------------------------------------------
+# Line classification
+# --------------------------------------------------------------------------
+
+def _classify_line(text: str) -> str:
+    """Classify a reconstructed line of text within one column lane.
+
+    Returns one of: 'header', 'item', 'rip', 'price', 'description', 'brand', 'skip'
+    """
+    stripped = text.strip()
+    if not stripped:
+        return "skip"
+
+    # Column header lines
+    if stripped.startswith("ITEM #") or stripped.startswith("RIP #"):
+        return "skip"
+
+    # Item code line: starts with optional '+' then 4-9 digit code
+    if re.match(r"^\+?\s*\d{4,9}\s+\d", stripped):
+        return "item"
+
+    # RIP line
+    if "RIP:" in stripped:
+        return "rip"
+
+    # Price/tier line: starts with nCASE, nBOTTLE, nSLEEVE, nCASES
+    if re.match(r"^\d+(CASE|BOTTLE|SLEEVE|CASES|BOTTLES|SLEEVES)\b", stripped):
+        return "price"
+
+    # Check if it's a category/country header
+    upper = stripped.upper()
+    if upper in _CATEGORY_WORDS or upper in _COUNTRY_REGION_WORDS:
+        return "header"
+    # Multi-word categories
+    for cat in _CATEGORY_WORDS:
+        if upper == cat:
+            return "header"
+    for region in _COUNTRY_REGION_WORDS:
+        if upper == region:
+            return "header"
+
+    # Brand or description text — if all uppercase and no dollar signs
+    if "$" not in stripped and not re.search(r"\d{4,}", stripped):
+        words = stripped.split()
+        attr_count = sum(1 for w in words if w in _ATTRIB_TOKENS)
+        non_attr = [w for w in words if w not in _ATTRIB_TOKENS]
+
+        # Has attribute tokens (F, LA, GP, JNC, SC) → brand
+        if non_attr and attr_count > 0:
+            return "brand"
+
+        # Short, all-uppercase text with no size/proof keywords → likely brand
+        # Brands: "STARWARD", "UNCLE NEAREST", "GREY GOOSE"
+        # Descriptions: "NOVA SINGLE MALT WHISKY", "SOLELY MATURED IN..."
+        if (
+            stripped.isupper()
+            and len(words) <= 4
+            and len(stripped) <= 35
+            and not re.search(r"\b(ML|LT|OZ|PK|PF|COMBO|CONTAINS|PACK)\b", stripped)
+            and "(" not in stripped
+            and stripped.upper() not in _CATEGORY_WORDS
+            and stripped.upper() not in _COUNTRY_REGION_WORDS
+            and stripped.upper() not in _SUBCATEGORY_WORDS
+            and not all(w.upper() in _MODIFIER_WORDS for w in words)
+        ):
+            return "brand"
+
+        # Pure text line — description
+        return "description"
+
+    # Combo savings line
+    if "COMBO SAVINGS:" in stripped:
+        return "price"
+
+    return "description"
+
+
+# --------------------------------------------------------------------------
+# Parsing helpers
+# --------------------------------------------------------------------------
+
+def _parse_item_line(text: str) -> dict | None:
+    """Parse an item code line into structured fields."""
+    m = _ITEM_CODE_RE.match(text.strip())
+    if not m:
+        return None
+
+    code = m.group(1)
+    rest = m.group(2)
+
+    # Extract size
+    size_m = _SIZE_RE.search(rest)
+    size = f"{size_m.group(1)} {size_m.group(2).upper()}" if size_m else None
+    # Normalize size
+    if size:
+        size = size.replace("LT", "L").replace(" CL", "0 ML")
+
+    # Extract pack
+    pack_m = _PACK_RE.search(rest)
+    pack = int(pack_m.group(1)) if pack_m else None
+
+    # Extract proof
+    proof_m = _PROOF_RE.search(rest)
+    proof = proof_m.group(1) if proof_m else None
+
+    # Extract vintage
+    vintage_m = _VINTAGE_RE.search(rest)
+    vintage = vintage_m.group(1) if vintage_m else None
+
+    # Extract buy deal (e.g. "1C\$50", "3C\$120", "AD")
+    buy_deal = None
+    buy_m = _BUY_DEAL_RE.search(rest)
+    if buy_m:
+        buy_deal = (buy_m.group(1) or buy_m.group(2) or "").replace("\\", "")
+
+    # Extract attributes (F, LA, GP, JNC, SC, etc.)
+    attribs = []
+    for tok in rest.split():
+        if tok.upper() in _ATTRIB_TOKENS and tok.upper() not in {"AD"}:
+            attribs.append(tok.upper())
+
+    return {
+        "code": code,
+        "size": size,
+        "pack": pack,
+        "proof": proof,
+        "vintage": vintage,
+        "buy_deal": buy_deal,
+        "attribs": " ".join(attribs) if attribs else None,
+    }
+
+
+_PER_UNIT_RE = re.compile(r"\$([\d,.]+)\s*/\s*(OZ|EA|ML|CL|LT)\b", re.IGNORECASE)
+
+
+def _parse_price_line(text: str) -> dict:
+    """Extract pricing info from a tier/price line."""
+    result = {}
+
+    # Determine tier
+    tier_m = re.match(
+        r"(\d+)(CASE|CASES|BOTTLE|BOTTLES|SLEEVE|SLEEVES)\b",
+        text.strip(),
+    )
+    if tier_m:
+        qty = int(tier_m.group(1))
+        unit = tier_m.group(2).upper()
+        if unit.startswith("CASE"):
+            result["tier"] = f"{qty}CS"
+            result["tier_cases"] = qty
+        elif unit.startswith("BOTTLE"):
+            result["tier"] = f"{qty}BT"
+            result["tier_cases"] = 0
+        elif unit.startswith("SLEEVE"):
+            result["tier"] = f"{qty}SL"
+            result["tier_cases"] = 0
+
+    # Collect per-unit amounts ($/OZ, $/EA, $/ML) to exclude them
+    per_unit_amounts = set()
+    for m in _PER_UNIT_RE.finditer(text):
+        per_unit_amounts.add(m.group(1).replace(",", ""))
+
+    # Find all dollar amounts, skipping per-unit ones
+    dollars = _DOLLAR_RE.findall(text)
+    clean_dollars = []
+    for d in dollars:
+        d_clean = d.replace(",", "")
+        if d_clean in per_unit_amounts:
+            continue
+        try:
+            clean_dollars.append(Decimal(d_clean))
+        except (InvalidOperation, ValueError):
+            pass
+
+    if len(clean_dollars) >= 2:
+        result["case_cost"] = clean_dollars[-2]
+        result["btl_cost"] = clean_dollars[-1]
+    elif len(clean_dollars) == 1:
+        result["btl_cost"] = clean_dollars[0]
+
+    return result
+
+
+def _parse_rip_line(text: str) -> list[dict]:
+    """Extract RIP number and any pricing from a RIP line."""
+    results = []
+    # Extract RIP numbers
+    rip_m = _RIP_NUM_RE.search(text)
+    rip_numbers = []
+    if rip_m:
+        rip_str = rip_m.group(1)
+        rip_numbers = [n.strip() for n in rip_str.split(",") if n.strip().isdigit()]
+
+    # Also extract any pricing on the same line
+    pricing = _parse_price_line(text)
+
+    for rip_num in rip_numbers:
+        result = {"rip_number": rip_num, **pricing}
+        results.append(result)
+
+    # If no RIP numbers found but there's pricing, return that
+    if not rip_numbers and pricing:
+        results.append(pricing)
+
+    return results
+
+
+def _extract_brand(text: str) -> str | None:
+    """Try to extract a brand name from brand/description text.
+
+    Strips attribute tokens (F, LA, GP, JNC, SC) and modifier words.
+    Returns None if everything gets stripped.
+    """
+    words = text.strip().split()
+    # Remove trailing attribute tokens
+    while words and words[-1].upper() in _ATTRIB_TOKENS:
+        words.pop()
+    # Remove leading/trailing modifier words
+    while words and words[0].upper() in _MODIFIER_WORDS:
+        words.pop(0)
+    while words and words[-1].upper() in _MODIFIER_WORDS:
+        words.pop()
+
+    if not words:
+        return None
+
+    brand = " ".join(words)
+    # Don't treat very long strings as brands (likely descriptions)
+    if len(brand) > 60:
+        return None
+    # Don't treat single-char brands
+    if len(brand) <= 1:
+        return None
+    # Check it's not a known category/country
+    if brand.upper() in _CATEGORY_WORDS or brand.upper() in _COUNTRY_REGION_WORDS:
+        return None
+    # Reject garbled OCR text (lots of single-char words like "/ E A" or "S T R A I G H T")
+    non_single = [w for w in words if len(w) > 1]
+    if len(non_single) < len(words) / 2:
+        return None
+    # Reject brands that are just punctuation or symbols
+    alpha_chars = sum(1 for c in brand if c.isalpha())
+    if alpha_chars < 2:
+        return None
+
+    return brand
+
+
+# --------------------------------------------------------------------------
+# Column-based parser
+# --------------------------------------------------------------------------
+
+def _group_words_into_lanes(words: list[dict], lanes: list[tuple]) -> list[list[dict]]:
+    """Group page words into column lanes based on x-position."""
+    lane_words = [[] for _ in lanes]
+    for w in words:
+        x_mid = (w["x0"] + w["x1"]) / 2
+        for i, (x_min, x_max) in enumerate(lanes):
+            if x_min <= x_mid <= x_max:
+                lane_words[i].append(w)
+                break
+    return lane_words
+
+
+def _reconstruct_lines(words: list[dict], y_tolerance: float = 4.0) -> list[tuple[float, str]]:
+    """Reconstruct text lines from word positions within a lane.
+
+    Returns list of (y_position, text) tuples sorted by y.
+    """
+    if not words:
+        return []
+
+    # Group by y position
+    rows: dict[int, list[dict]] = defaultdict(list)
+    for w in words:
+        y_key = round(w["top"] / y_tolerance)
+        rows[y_key].append(w)
+
+    lines = []
+    for y_key in sorted(rows.keys()):
+        row_words = sorted(rows[y_key], key=lambda w: w["x0"])
+        text = " ".join(w["text"] for w in row_words)
+        y_pos = min(w["top"] for w in row_words)
+        lines.append((y_pos, text))
+
+    return lines
+
+
+def _parse_lane(
+    lines: list[tuple[float, str]],
+    page_num: int,
+    lane_idx: int,
+    source: str,
+    section_name: str,
+) -> list[dict]:
+    """Parse one column lane's lines into product rows."""
+    products = []
+    current_category = section_name  # "SPIRITS", "WINE", etc.
+    current_country = None
+    current_region = None
+    current_brand = None
+    current_description = None
+    current_item = None
+    current_rips = []
+    current_prices = []
+
+    def _flush():
+        nonlocal current_item, current_description, current_rips, current_prices
+        if current_item is None:
+            return
+
+        # Compute best RIP save
+        best_save = None
+        best_case_cost = None
+        best_btl_cost = None
+        rip_tiers = []
+
+        for price in current_prices:
+            cc = price.get("case_cost")
+            bc = price.get("btl_cost")
+            if cc is not None and (best_case_cost is None or cc < best_case_cost):
+                best_case_cost = cc
+            if bc is not None and (best_btl_cost is None or bc < best_btl_cost):
+                best_btl_cost = bc
+
+        for rip in current_rips:
+            tier = rip.get("tier")
+            cc = rip.get("case_cost")
+            bc = rip.get("btl_cost")
+            rip_num = rip.get("rip_number")
+            if tier:
+                rip_tiers.append({
+                    "tier": tier,
+                    "tier_cases": rip.get("tier_cases", 0),
+                    "case_price": cc,
+                    "btl_price": bc,
+                    "rip_number": rip_num,
+                })
+
+        # Build the product row
+        desc_parts = []
+        if current_brand:
+            desc_parts.append(current_brand)
+        if current_description:
+            desc_parts.append(current_description)
+        description = " ".join(desc_parts) if desc_parts else None
+
+        # Parse BUY deal as RIP offers.
+        # Fedway format: "1C$50" = 1 case tier, $50 save per case
+        # "3C$120" = 3 case tier, $120 save (total for 3 cases)
+        # "1B$700" = 1 bottle, $700 save
+        rip_offers = []
+        buy_deal = current_item.get("buy_deal") or ""
+        for buy_m in re.finditer(r"(\d+)([CB])\\?\$(\d+(?:\.\d+)?)", buy_deal):
+            qty = int(buy_m.group(1))
+            unit = buy_m.group(2)
+            amount = Decimal(buy_m.group(3))
+            if unit == "C" and qty > 0:
+                tier_label = f"{qty}CS"
+                # save_amount is per case
+                save_per_case = amount / qty if qty > 1 else amount
+                effective_case = best_case_cost - save_per_case if best_case_cost else None
+                rip_offers.append({
+                    "rip_tier": tier_label,
+                    "rip_save_amount": save_per_case,
+                    "rip_case_price": effective_case,
+                    "rip_btl_price": None,
+                })
+                if best_save is None or save_per_case > best_save:
+                    best_save = save_per_case
+            elif unit == "B" and qty > 0:
+                tier_label = f"{qty}BT"
+                save_per_btl = amount / qty if qty > 1 else amount
+                rip_offers.append({
+                    "rip_tier": tier_label,
+                    "rip_save_amount": save_per_btl,
+                    "rip_case_price": None,
+                    "rip_btl_price": best_btl_cost - save_per_btl if best_btl_cost else None,
+                })
+
+        row = {
+            "code": current_item["code"],
+            # Pipeline uses sub_brand for the product description
+            "sub_brand": description,
+            "brand_header": current_brand,
+            "category": current_category,
+            "country": current_country,
+            "region": current_region,
+            "size": current_item.get("size"),
+            "pack": current_item.get("pack"),
+            "proof": current_item.get("proof"),
+            "vintage": current_item.get("vintage"),
+            "case_cost": best_case_cost,
+            "btl_cost": best_btl_cost,
+            "best_buy": current_item.get("buy_deal"),
+            "best_rip": None,
+            "attribs": current_item.get("attribs"),
+            "rip_offers": rip_offers,
+            "page": page_num,
+            "lane": lane_idx,
+            "source": source,
+        }
+
+        # Set best_rip summary
+        if best_save is not None:
+            row["best_rip"] = f"${best_save}"
+
+        products.append(row)
+        current_item = None
+        current_rips = []
+        current_prices = []
+
+    for _y, text in lines:
+        line_type = _classify_line(text)
+
+        if line_type == "skip":
+            continue
+
+        elif line_type == "header":
+            _flush()
+            upper = text.strip().upper()
+            if upper in _CATEGORY_WORDS:
+                current_category = upper
+                current_country = None
+                current_region = None
+            elif upper in _COUNTRY_REGION_WORDS:
+                # Determine if it's a country or sub-region
+                if upper in {
+                    "USA", "SCOTLAND", "IRELAND", "CANADA", "JAPAN", "TAIWAN",
+                    "SWEDEN", "FRANCE", "ITALY", "SPAIN", "PORTUGAL", "GERMANY",
+                    "AUSTRIA", "AUSTRALIA", "NEW ZEALAND", "SOUTH AFRICA",
+                    "CHILE", "ARGENTINA", "MEXICO", "BRAZIL", "ENGLAND",
+                    "NETHERLANDS", "BELGIUM", "SWITZERLAND", "GREECE", "HUNGARY",
+                    "CROATIA", "CZECH REPUBLIC", "POLAND", "INDIA", "CHINA",
+                    "KOREA", "MARTINIQUE", "BARBADOS", "JAMAICA", "TRINIDAD",
+                    "SLOVAKIA", "ROMANIA", "PERU", "URUGUAY", "COLOMBIA",
+                    "GUATEMALA", "NICARAGUA", "PANAMA", "DOMINICAN REPUBLIC",
+                    "ISRAEL", "LEBANON", "TURKEY", "MOROCCO", "THAILAND",
+                    "PHILIPPINES", "PUERTO RICO", "WALES",
+                }:
+                    current_country = upper
+                    current_region = None
+                else:
+                    current_region = upper
+
+        elif line_type == "brand":
+            _flush()
+            current_brand = _extract_brand(text)
+            current_description = None
+
+        elif line_type == "item":
+            _flush()
+            parsed = _parse_item_line(text)
+            if parsed:
+                current_item = parsed
+
+        elif line_type == "rip":
+            rips = _parse_rip_line(text)
+            current_rips.extend(rips)
+
+        elif line_type == "price":
+            price = _parse_price_line(text)
+            if price:
+                current_prices.append(price)
+
+        elif line_type == "description":
+            if current_item is None:
+                # Description before item code — this is the product name/variant
+                if current_description:
+                    current_description += " " + text.strip()
+                else:
+                    current_description = text.strip()
+            # After item code, descriptions are continuation text (ignore for now)
+
+    # Flush last product
+    _flush()
+
+    return products
+
+
+# --------------------------------------------------------------------------
+# Public entry point
+# --------------------------------------------------------------------------
+
+def parse_main_catalog(
+    pages: list,
+    source: str,
+    section_name: str = "SPIRITS",
+) -> list[dict]:
+    """Parse Fedway main catalog pages (Spirits, Wine, etc.).
+
+    Args:
+        pages: list of pdfplumber page objects
+        source: source filename for provenance
+        section_name: the section being parsed (SPIRITS, WINE, etc.)
+
+    Returns:
+        List of product dicts compatible with the pipeline's main_catalog format.
+    """
+    all_products = []
+
+    for page in pages:
+        page_num = page.page_number
+        words = page.extract_words(
+            keep_blank_chars=True,
+            x_tolerance=3,
+            y_tolerance=3,
+        )
+
+        # Skip header words (top ~35px is the "Order Phone / Section / Order Fax" bar)
+        content_words = [w for w in words if w["top"] > 35]
+
+        # Group into lanes
+        lane_words = _group_words_into_lanes(content_words, CATALOG_LANES_X)
+
+        for lane_idx, lw in enumerate(lane_words):
+            if not lw:
+                continue
+            lines = _reconstruct_lines(lw)
+            products = _parse_lane(
+                lines, page_num, lane_idx, source, section_name,
+            )
+            all_products.extend(products)
+
+    return all_products

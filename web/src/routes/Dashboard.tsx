@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import { insightsApi } from "../lib/api";
 import { useAuth } from "../lib/auth";
+import { useDistributor } from "../lib/distributor";
 import { money, pct, pctClass } from "../lib/fmt";
 import type { MoverRow } from "../lib/api";
 
@@ -61,36 +62,37 @@ function MoverPanel({ title, subtitle, rows, loading, emptyHint, limit = 10 }: {
 
 export default function Dashboard() {
   const { username } = useAuth();
+  const { distributor } = useDistributor();
 
   const summaryQ = useQuery({
-    queryKey: ["dashboard-summary"],
-    queryFn: () => insightsApi.summary(),
+    queryKey: ["dashboard-summary", distributor],
+    queryFn: () => insightsApi.summary(distributor),
     staleTime: 60_000,
   });
 
   const moversQ = useQuery({
-    queryKey: ["movers"],
-    queryFn: () => insightsApi.movers({ limit: 15 }),
+    queryKey: ["movers", distributor],
+    queryFn: () => insightsApi.movers({ distributor, limit: 15 }),
   });
 
   const wlMoversQ = useQuery({
-    queryKey: ["watchlist-movers"],
-    queryFn: () => insightsApi.watchlistMovers(),
+    queryKey: ["watchlist-movers", distributor],
+    queryFn: () => insightsApi.watchlistMovers(distributor),
   });
 
   const alertsQ = useQuery({
-    queryKey: ["alerts", { dashboard: true }],
+    queryKey: ["alerts", { dashboard: true }, distributor],
     queryFn: () => insightsApi.alerts({ limit: 10 }),
   });
 
   const ripsQ = useQuery({
-    queryKey: ["rips-top", { limit: 5 }],
-    queryFn: () => insightsApi.rips({ limit: 5 }),
+    queryKey: ["rips-top", { limit: 5 }, distributor],
+    queryFn: () => insightsApi.rips({ distributor, limit: 5 }),
   });
 
   const closeoutsQ = useQuery({
-    queryKey: ["closeouts-top"],
-    queryFn: () => insightsApi.closeouts({ limit: 5 }),
+    queryKey: ["closeouts-top", distributor],
+    queryFn: () => insightsApi.closeouts({ distributor, limit: 5 }),
   });
 
   const s = summaryQ.data;

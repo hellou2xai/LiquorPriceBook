@@ -251,7 +251,8 @@ def list_orders(
             item_stats[r.watchlist_id] = (r.cnt, r.total_cases, r.total_bottles)
 
     # Compute invoice totals per order (case_cost * qty_cases + btl_cost * qty_bottles)
-    edition = _current_edition(session, "nj-allied")
+    # Use the distributor from the product's distributor_id; default to nj-allied
+    edition = _current_edition(session, "nj-allied")  # TODO: per-order distributor
     invoice_by_order: dict[UUID, Decimal] = defaultdict(lambda: Decimal("0"))
     rebate_by_order: dict[UUID, Decimal] = defaultdict(lambda: Decimal("0"))
     if order_ids:
@@ -650,11 +651,12 @@ def submit_order(
 @router.get("/api/v1/orders/{order_id}", response_model=OrderDetailOut)
 def get_order_detail(
     order_id: UUID,
+    distributor: str = Query("nj-allied"),
     user: dict = Depends(get_current_user),
     session: Session = Depends(get_session),
 ):
     order = _get_order(session, order_id, user["tenant_id"])
-    edition = _current_edition(session, "nj-allied")
+    edition = _current_edition(session, distributor)
 
     # Fetch all items with product+edition info
     stmt = (

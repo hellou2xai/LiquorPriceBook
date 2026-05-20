@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import { analyticsApi, watchlistApi, type AnalyticsView, type AnalyticsRow, type CategoryTrendRow } from "../lib/api";
 import SortableTable, { useSort, type Column } from "../components/SortableTable";
 import FavoriteButton from "../components/FavoriteButton";
+import { useDistributor } from "../lib/distributor";
 
 type ViewCard = {
   view: AnalyticsView;
@@ -368,9 +369,11 @@ export default function Analytics() {
     [favCodes, favNotes, activeView],
   );
 
+  const { distributor } = useDistributor();
+
   const { data, isLoading, error } = useQuery({
-    queryKey: ["analytics", activeView],
-    queryFn: () => analyticsApi.query(activeView!, 500),
+    queryKey: ["analytics", activeView, distributor],
+    queryFn: () => analyticsApi.query(activeView!, 500, distributor),
     enabled: activeView !== null,
   });
 
