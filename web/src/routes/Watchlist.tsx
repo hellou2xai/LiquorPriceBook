@@ -1,8 +1,8 @@
 import { useState, useMemo, useRef, useCallback, useEffect } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
-import { watchlistApi } from "../lib/api";
+import { watchlistApi, ordersApi } from "../lib/api";
 import type { OrderItem } from "../lib/api";
 import { money } from "../lib/fmt";
 import FavoriteButton from "../components/FavoriteButton";
@@ -33,7 +33,7 @@ type CartQty = { bottles: number; cases: number };
 // ── localStorage helpers ──
 
 type OrderTemplate = { name: string; cart: Record<string, CartQty>; savedAt: string };
-type OrderHistoryEntry = { id: string; cart: Record<string, CartQty>; totalCost: number; itemCount: number; savedAt: string };
+type OrderHistoryEntry = { id: string; orderId?: string; name?: string; cart: Record<string, CartQty>; totalCost: number; itemCount: number; savedAt: string };
 
 const TEMPLATES_KEY = "lpb_order_templates";
 const HISTORY_KEY = "lpb_order_history";
@@ -320,13 +320,46 @@ export default function Watchlist() {
   const loadTemplate = useCallback((t: OrderTemplate) => { setCart(recordToMap(t.cart)); setShowTemplates(false); }, []);
   const deleteTemplate = useCallback((name: string) => { const u = templates.filter((t) => t.name !== name); saveTemplates(u); setTemplatesState(u); }, [templates]);
 
-  const saveToHistory = useCallback(() => {
+  const [savingOrder, setSavingOrder] = useState(false);
+  const navigate = useNavigate();
+
+  const saveToHistory = useCallback(async () => {
     if (summary.totalItems === 0) return;
-    const entry: OrderHistoryEntry = { id: Date.now().toString(36), cart: cartToRecord(cart), totalCost: summary.totalCost, itemCount: summary.totalItems, savedAt: new Date().toISOString() };
-    const updated = [entry, ...history];
-    saveHistory(updated);
-    setHistoryState(updated);
-  }, [cart, summary, history]);
+    const name = window.prompt("Enter a name for this order:", `Order ${new Date().toLocaleDateString()}`);
+    if (!name || !name.trim()) return;
+    setSavingOrder(true);
+    try {
+      // 1. Create real order via API
+      const order = await ordersApi.create({ name: name.trim() });
+      // 2. Copy tracked items into it
+      await ordersApi.copyFromWatchlist(order.id);
+      // 3. Update quantities for items in the cart
+      const cartRecord = cartToRecord(cart);
+      const updatePromises = Object.entries(cartRecord).map(([code, qty]) =>
+        ordersApi.updateItem(order.id, code, { qty_cases: qty.cases, qty_bottles: qty.bottles }).catch(() => {})
+      );
+      await Promise.all(updatePromises);
+      // 4. Save to localStorage history with order ID
+      const entry: OrderHistoryEntry = {
+        id: Date.now().toString(36),
+        orderId: order.id,
+        name: name.trim(),
+        cart: cartRecord,
+        totalCost: summary.totalCost,
+        itemCount: summary.totalItems,
+        savedAt: new Date().toISOString(),
+      };
+      const updated = [entry, ...history];
+      saveHistory(updated);
+      setHistoryState(updated);
+      // 5. Navigate to order detail
+      navigate(`/orders/${order.id}`);
+    } catch (err) {
+      alert(`Failed to create order: ${err instanceof Error ? err.message : "Unknown error"}`);
+    } finally {
+      setSavingOrder(false);
+    }
+  }, [cart, summary, history, navigate]);
 
   const loadFromHistory = useCallback((entry: OrderHistoryEntry) => { setCart(recordToMap(entry.cart)); setShowHistory(false); }, []);
 
@@ -587,10 +620,27 @@ export default function Watchlist() {
               {history.map((h) => (
                 <div key={h.id} className="flex items-center justify-between py-2">
                   <div>
-                    <span className="text-sm text-zinc-700">{new Date(h.savedAt).toLocaleDateString()} {new Date(h.savedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
-                    <span className="ml-2 text-xs text-zinc-400">{h.itemCount} items · {money(h.totalCost)}</span>
+                    {h.orderId ? (
+                      <Link to={`/orders/${h.orderId}`} className="text-sm text-zinc-900 font-medium hover:underline">
+                        {h.name ?? new Date(h.savedAt).toLocaleDateString()}
+                      </Link>
+                    ) : (
+                      <span className="text-sm text-zinc-700">
+                        {new Date(h.savedAt).toLocaleDateString()} {new Date(h.savedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                      </span>
+                    )}
+                    <span className="ml-2 text-xs text-zinc-400">
+                      {new Date(h.savedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} · {h.itemCount} items · {money(h.totalCost)}
+                    </span>
                   </div>
-                  <button onClick={() => loadFromHistory(h)} className="rounded border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-50">Re-order</button>
+                  <div className="flex gap-2">
+                    {h.orderId && (
+                      <Link to={`/orders/${h.orderId}`} className="rounded border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-50">
+                        View Order
+                      </Link>
+                    )}
+                    <button onClick={() => loadFromHistory(h)} className="rounded border border-zinc-300 px-2 py-1 text-xs hover:bg-zinc-50">Re-order</button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -677,7 +727,9 @@ export default function Watchlist() {
                 {summary.totalItems} item{summary.totalItems === 1 ? "" : "s"} in cart
               </div>
               <div className="flex items-center gap-4">
-                <button onClick={saveToHistory} className="rounded-md border border-zinc-300 bg-white px-3 py-1 text-xs hover:bg-zinc-50">Save Order</button>
+                <button onClick={saveToHistory} disabled={savingOrder} className="rounded-md border border-zinc-300 bg-white px-3 py-1 text-xs hover:bg-zinc-50 disabled:opacity-50">
+                  {savingOrder ? "Creating Order..." : "Save Order"}
+                </button>
                 <span className="text-zinc-900 font-semibold tabular-nums">Estimated total: {money(summary.totalCost)}</span>
               </div>
             </div>
