@@ -93,6 +93,7 @@ export default function Closeouts() {
       label: "Original Case",
       sortable: true,
       align: "right",
+      hideBelow: "sm",
       sortValue: (r) => r.original_case ? parseFloat(r.original_case) : null,
       render: (r) => <span className="tabular-nums line-through text-zinc-400">{money(r.original_case)}</span>,
     },
@@ -147,7 +148,7 @@ export default function Closeouts() {
   return (
     <div className="space-y-5">
       <header className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight">Closeouts</h1>
+        <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">Closeouts</h1>
         <p className="text-sm text-zinc-600">
           Inventory Reduction items — terminal listings, last chance to buy. {stats && `${stats.count} shown.`}
         </p>
@@ -174,9 +175,9 @@ export default function Closeouts() {
         </div>
       )}
 
-      <div className="flex flex-wrap gap-3 items-center">
+      <div className="flex flex-col sm:flex-row flex-wrap gap-3 items-center">
         <input type="text" placeholder="Search SKU or description..." value={search} onChange={(e) => setSearch(e.target.value)}
-          className="w-64 rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm placeholder:text-zinc-400 focus:border-zinc-900 focus:outline-none" />
+          className="w-full sm:w-64 rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm placeholder:text-zinc-400 focus:border-zinc-900 focus:outline-none" />
         <select value={daysFilter} onChange={(e) => setDaysFilter(e.target.value as "" | "new" | "aging")} className="rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-sm">
           <option value="">All items</option>
           <option value="new">New (30 days or less)</option>

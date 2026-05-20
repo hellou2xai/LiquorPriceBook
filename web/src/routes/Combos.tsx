@@ -11,6 +11,7 @@ const columns: Column<ComboRow>[] = [
     key: "sku",
     label: "SKU",
     sortable: true,
+    hideBelow: "sm",
     sortValue: (r) => r.sku,
     render: (r) => <span className="font-mono text-xs whitespace-nowrap">{r.sku}</span>,
   },
@@ -18,6 +19,7 @@ const columns: Column<ComboRow>[] = [
     key: "subcategory",
     label: "Category",
     sortable: true,
+    hideBelow: "md",
     sortValue: (r) => r.subcategory ?? "",
     render: (r) => <span className="text-zinc-600 whitespace-nowrap">{r.subcategory ?? "\u2014"}</span>,
   },
@@ -76,19 +78,19 @@ export default function Combos() {
   return (
     <div className="space-y-5">
       <header className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight">Combos</h1>
+        <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">Combos</h1>
         <p className="text-sm text-zinc-600">
           Bundled SKUs from the current edition. {rows.length > 0 && `${rows.length} combos loaded.`}
         </p>
       </header>
 
-      <div className="flex flex-wrap gap-3">
+      <div className="flex flex-col sm:flex-row flex-wrap gap-3">
         <input
           type="text"
           placeholder="Search SKU, code, or contents..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="w-64 rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm placeholder:text-zinc-400 focus:border-zinc-900 focus:outline-none"
+          className="w-full sm:w-64 rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm placeholder:text-zinc-400 focus:border-zinc-900 focus:outline-none"
         />
         {subcategories.length > 0 && (
           <select

@@ -3,6 +3,16 @@ import { useState, useCallback } from "react";
 export type SortDirection = "asc" | "desc";
 export type SortConfig = { key: string; direction: SortDirection } | null;
 
+/** Tailwind breakpoint at which this column becomes visible.
+ *  undefined = always visible. "sm" = hidden below 640px, "md" = hidden below 768px, "lg" = hidden below 1024px. */
+export type HideBelow = "sm" | "md" | "lg";
+
+const HIDE_CLASSES: Record<HideBelow, string> = {
+  sm: "hidden sm:table-cell",
+  md: "hidden md:table-cell",
+  lg: "hidden lg:table-cell",
+};
+
 export type Column<T> = {
   key: string;
   label: string;
@@ -10,6 +20,8 @@ export type Column<T> = {
   align?: "left" | "right" | "center";
   className?: string;
   thClassName?: string;
+  /** Hide this column below the given breakpoint */
+  hideBelow?: HideBelow;
   render: (item: T, index: number) => React.ReactNode;
   sortValue?: (item: T) => string | number | null;
 };
@@ -82,10 +94,11 @@ export function SortableHeader<T>({
   const dir = active ? sort!.direction : null;
   const align = column.align ?? "left";
   const textAlign = align === "right" ? "text-right" : align === "center" ? "text-center" : "text-left";
+  const hideCls = column.hideBelow ? HIDE_CLASSES[column.hideBelow] : "";
 
   if (!column.sortable) {
     return (
-      <th className={`px-4 py-2 text-[10px] uppercase tracking-wide text-zinc-500 font-medium ${textAlign} ${column.thClassName ?? ""}`}>
+      <th className={`px-3 py-2 text-[10px] uppercase tracking-wide text-zinc-500 font-medium ${textAlign} ${hideCls} ${column.thClassName ?? ""}`}>
         {column.label}
       </th>
     );
@@ -93,9 +106,9 @@ export function SortableHeader<T>({
 
   return (
     <th
-      className={`px-4 py-2 text-[10px] uppercase tracking-wide font-medium cursor-pointer select-none group ${textAlign} ${
+      className={`px-3 py-2 text-[10px] uppercase tracking-wide font-medium cursor-pointer select-none group ${textAlign} ${
         active ? "text-zinc-900" : "text-zinc-500 hover:text-zinc-700"
-      } ${column.thClassName ?? ""}`}
+      } ${hideCls} ${column.thClassName ?? ""}`}
       onClick={() => onSort(column.key)}
     >
       {column.label}
@@ -128,7 +141,7 @@ export default function SortableTable<T>({
   }
 
   return (
-    <div className={`overflow-x-auto ${className}`}>
+    <div className={`overflow-x-auto -mx-3 sm:mx-0 ${className}`}>
       <table className="min-w-full divide-y divide-zinc-200 text-sm">
         <thead className="bg-zinc-50/80">
           <tr>
@@ -144,16 +157,19 @@ export default function SortableTable<T>({
               className={`hover:bg-zinc-50 ${onRowClick ? "cursor-pointer" : ""}`}
               onClick={onRowClick ? () => onRowClick(item) : undefined}
             >
-              {columns.map((col) => (
-                <td
-                  key={col.key}
-                  className={`px-4 py-2.5 ${
-                    col.align === "right" ? "text-right" : col.align === "center" ? "text-center" : ""
-                  } ${col.className ?? ""}`}
-                >
-                  {col.render(item, i)}
-                </td>
-              ))}
+              {columns.map((col) => {
+                const hideCls = col.hideBelow ? HIDE_CLASSES[col.hideBelow] : "";
+                return (
+                  <td
+                    key={col.key}
+                    className={`px-3 py-2.5 ${
+                      col.align === "right" ? "text-right" : col.align === "center" ? "text-center" : ""
+                    } ${hideCls} ${col.className ?? ""}`}
+                  >
+                    {col.render(item, i)}
+                  </td>
+                );
+              })}
             </tr>
           ))}
         </tbody>

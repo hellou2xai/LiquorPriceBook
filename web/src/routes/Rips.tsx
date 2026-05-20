@@ -104,6 +104,7 @@ export default function Rips() {
       key: "brand",
       label: "Brand",
       sortable: true,
+      hideBelow: "sm",
       sortValue: (r) => r.brand_slug ?? "",
       render: (r) => <span className="text-zinc-600 text-xs">{r.brand_slug ?? "\u2014"}</span>,
     },
@@ -111,6 +112,7 @@ export default function Rips() {
       key: "size",
       label: "Size",
       sortable: true,
+      hideBelow: "sm",
       sortValue: (r) => r.size ?? "",
       render: (r) => <span className="text-zinc-600">{r.size ?? "\u2014"}</span>,
     },
@@ -118,6 +120,7 @@ export default function Rips() {
       key: "tier",
       label: "Tier",
       sortable: true,
+      hideBelow: "md",
       sortValue: (r) => r.tier_cases,
       render: (r) => <span className="font-mono text-xs">{r.tier}</span>,
     },
@@ -156,6 +159,7 @@ export default function Rips() {
       key: "stable",
       label: "Stability",
       sortable: true,
+      hideBelow: "md",
       sortValue: (r) => (r.stable === null ? 0 : r.stable ? 2 : 1),
       render: (r) =>
         r.stable === null ? (
@@ -173,7 +177,7 @@ export default function Rips() {
   return (
     <div className="space-y-5">
       <header className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight">RIPs</h1>
+        <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">RIPs</h1>
         <p className="text-sm text-zinc-600">
           Retail Incentive Programs — ranked by savings. {stats && `${stats.count} RIPs shown.`}
         </p>
@@ -200,13 +204,13 @@ export default function Rips() {
         </div>
       )}
 
-      <div className="flex flex-wrap gap-3 items-center">
+      <div className="flex flex-col sm:flex-row flex-wrap gap-3 items-start sm:items-center">
         <input
           type="text"
           placeholder="Search SKU, description, brand..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="w-64 rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm placeholder:text-zinc-400 focus:border-zinc-900 focus:outline-none"
+          className="w-full sm:w-64 rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm placeholder:text-zinc-400 focus:border-zinc-900 focus:outline-none"
         />
         <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} className="rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-sm">
           <option value="">All categories</option>

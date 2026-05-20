@@ -47,7 +47,7 @@ function InlineName({
   if (!editing) {
     return (
       <h1
-        className="text-2xl font-semibold tracking-tight cursor-pointer hover:underline decoration-zinc-300 underline-offset-4"
+        className="text-xl sm:text-2xl font-semibold tracking-tight cursor-pointer hover:underline decoration-zinc-300 underline-offset-4"
         onClick={() => {
           setDraft(value);
           setEditing(true);
@@ -78,7 +78,7 @@ function InlineName({
           setDraft(value);
         }
       }}
-      className="text-2xl font-semibold tracking-tight border-b-2 border-zinc-400 bg-transparent outline-none w-full max-w-md"
+      className="text-xl sm:text-2xl font-semibold tracking-tight border-b-2 border-zinc-400 bg-transparent outline-none w-full max-w-md"
     />
   );
 }
@@ -347,6 +347,7 @@ export default function OrderDetailPage() {
         key: "brand",
         label: "Brand",
         sortable: true,
+        hideBelow: "md",
         sortValue: (item) => item.brand_display ?? "",
         render: (item) => (
           <span className="text-xs text-zinc-600">{item.brand_display ?? "\u2014"}</span>
@@ -356,6 +357,7 @@ export default function OrderDetailPage() {
         key: "category",
         label: "Category",
         sortable: true,
+        hideBelow: "lg",
         sortValue: (item) => item.category_display ?? "",
         render: (item) => (
           <span className="text-xs text-zinc-600">{item.category_display ?? "\u2014"}</span>
@@ -365,6 +367,7 @@ export default function OrderDetailPage() {
         key: "divisions",
         label: "Div",
         sortable: true,
+        hideBelow: "lg",
         sortValue: (item) => item.divisions ?? "",
         render: (item) => (
           <span className="text-[10px] font-mono text-zinc-500">
@@ -441,6 +444,7 @@ export default function OrderDetailPage() {
         label: "After RIP",
         sortable: true,
         align: "right" as const,
+        hideBelow: "sm",
         sortValue: (item) => {
           if (!item.case_cost) return null;
           const base = parseFloat(item.case_cost);
@@ -485,6 +489,7 @@ export default function OrderDetailPage() {
         label: "Qty Btls",
         sortable: true,
         align: "center" as const,
+        hideBelow: "sm",
         sortValue: (item) => item.qty_bottles,
         render: (item) => (
           <QtyStepper
@@ -504,6 +509,7 @@ export default function OrderDetailPage() {
         label: "Line Invoice",
         sortable: true,
         align: "right" as const,
+        hideBelow: "md",
         sortValue: (item) =>
           item.line_invoice ? parseFloat(item.line_invoice) : null,
         render: (item) => (
@@ -515,6 +521,7 @@ export default function OrderDetailPage() {
         label: "Line RIP",
         sortable: true,
         align: "right" as const,
+        hideBelow: "md",
         sortValue: (item) =>
           item.line_rip_rebate ? parseFloat(item.line_rip_rebate) : null,
         render: (item) =>
@@ -544,6 +551,7 @@ export default function OrderDetailPage() {
         key: "notes",
         label: "Notes",
         sortable: false,
+        hideBelow: "lg",
         render: (item) => (
           <InlineLineNote
             value={item.notes}
@@ -740,7 +748,7 @@ export default function OrderDetailPage() {
             <div className="text-[10px] uppercase tracking-wide text-zinc-500">
               Payment Needed Now (Invoice)
             </div>
-            <div className="mt-1 text-2xl font-semibold tracking-tight tabular-nums text-zinc-900">
+            <div className="mt-1 text-xl sm:text-2xl font-semibold tracking-tight tabular-nums text-zinc-900">
               {money(payment.invoice_total)}
             </div>
           </div>
@@ -749,7 +757,7 @@ export default function OrderDetailPage() {
             <div className="text-[10px] uppercase tracking-wide text-amber-700">
               RIP Rebate (cheque later)
             </div>
-            <div className="mt-1 text-2xl font-semibold tracking-tight tabular-nums text-amber-800">
+            <div className="mt-1 text-xl sm:text-2xl font-semibold tracking-tight tabular-nums text-amber-800">
               {money(payment.rip_rebate_total)}
             </div>
           </div>
@@ -758,7 +766,7 @@ export default function OrderDetailPage() {
             <div className="text-[10px] uppercase tracking-wide text-emerald-700">
               Effective Cost
             </div>
-            <div className="mt-1 text-2xl font-bold tracking-tight tabular-nums text-emerald-800">
+            <div className="mt-1 text-xl sm:text-2xl font-bold tracking-tight tabular-nums text-emerald-800">
               {money(payment.effective_total)}
             </div>
           </div>
@@ -784,27 +792,27 @@ export default function OrderDetailPage() {
               <table className="min-w-full text-sm divide-y divide-zinc-100">
                 <thead className="bg-zinc-50/80 text-[10px] uppercase tracking-wide text-zinc-500">
                   <tr>
-                    <th className="px-4 py-2 text-left font-medium">Category</th>
-                    <th className="px-4 py-2 text-right font-medium">Items</th>
-                    <th className="px-4 py-2 text-right font-medium">Invoice</th>
-                    <th className="px-4 py-2 text-right font-medium">Rebate</th>
-                    <th className="px-4 py-2 text-right font-medium">Effective</th>
+                    <th className="px-3 py-2 text-left font-medium">Category</th>
+                    <th className="px-3 py-2 text-right font-medium hidden sm:table-cell">Items</th>
+                    <th className="px-3 py-2 text-right font-medium hidden sm:table-cell">Invoice</th>
+                    <th className="px-3 py-2 text-right font-medium hidden sm:table-cell">Rebate</th>
+                    <th className="px-3 py-2 text-right font-medium">Effective</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-100">
                   {payment.by_category.map((cat) => (
                     <tr key={cat.category} className="hover:bg-zinc-50">
-                      <td className="px-4 py-2 text-zinc-700">{cat.category}</td>
-                      <td className="px-4 py-2 text-right tabular-nums text-zinc-600">
+                      <td className="px-3 py-2 text-zinc-700">{cat.category}</td>
+                      <td className="px-3 py-2 text-right tabular-nums text-zinc-600 hidden sm:table-cell">
                         {cat.item_count}
                       </td>
-                      <td className="px-4 py-2 text-right tabular-nums">
+                      <td className="px-3 py-2 text-right tabular-nums hidden sm:table-cell">
                         {money(cat.invoice)}
                       </td>
-                      <td className="px-4 py-2 text-right tabular-nums text-amber-700">
+                      <td className="px-3 py-2 text-right tabular-nums text-amber-700 hidden sm:table-cell">
                         {money(cat.rebate)}
                       </td>
-                      <td className="px-4 py-2 text-right tabular-nums font-medium text-emerald-700">
+                      <td className="px-3 py-2 text-right tabular-nums font-medium text-emerald-700">
                         {money(cat.effective)}
                       </td>
                     </tr>
@@ -851,7 +859,7 @@ export default function OrderDetailPage() {
               value={addCode}
               onChange={(e) => setAddCode(e.target.value)}
               placeholder="Product code (e.g. 12345)"
-              className="flex-1 max-w-xs rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm focus:border-zinc-900 focus:outline-none"
+              className="flex-1 sm:max-w-xs rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm focus:border-zinc-900 focus:outline-none"
             />
             <button
               type="submit"
@@ -872,7 +880,7 @@ export default function OrderDetailPage() {
       {/* ── 7. Summary Footer ── */}
       <footer className="rounded-lg border border-zinc-200 bg-zinc-50 p-4">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-          <div className="flex gap-6 text-sm text-zinc-600">
+          <div className="flex gap-4 sm:gap-6 text-sm text-zinc-600 flex-wrap">
             <div>
               <span className="text-zinc-400 text-xs uppercase tracking-wide mr-1">
                 Items
@@ -896,7 +904,7 @@ export default function OrderDetailPage() {
               </span>
             </div>
           </div>
-          <div className="flex gap-6 text-sm">
+          <div className="flex gap-4 sm:gap-6 text-sm flex-wrap">
             <div>
               <span className="text-zinc-400 text-xs uppercase tracking-wide mr-1">
                 Invoice

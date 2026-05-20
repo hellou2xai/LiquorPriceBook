@@ -75,7 +75,7 @@ export default function ProductDetail() {
             {d.category_display ?? "Uncategorised"}
             {d.brand_display ? <span> · {d.brand_display}</span> : null}
           </div>
-          <h1 className="text-2xl font-semibold tracking-tight">
+          <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">
             {d.description ?? "Product"}
           </h1>
           <div className="text-sm text-zinc-600 font-mono">

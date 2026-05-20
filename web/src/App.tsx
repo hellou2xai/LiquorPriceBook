@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Routes, Route, NavLink, Navigate } from "react-router-dom";
 
 import ProtectedRoute from "./components/ProtectedRoute";
@@ -30,53 +31,103 @@ const NAV = [
   { to: "/alerts", label: "Alerts" },
 ];
 
+const navLinkClass = ({ isActive }: { isActive: boolean }) =>
+  [
+    "px-3 py-1.5 rounded-md text-sm",
+    isActive
+      ? "bg-zinc-900 text-white"
+      : "text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100",
+  ].join(" ");
+
 function Shell({ children }: { children: React.ReactNode }) {
   const { isAuthed } = useAuth();
+  const [mobileOpen, setMobileOpen] = useState(false);
+
+  // Close mobile menu on navigation
+  const closeMobile = () => setMobileOpen(false);
+
   return (
     <div className="min-h-full flex flex-col">
-      <header className="border-b border-zinc-200 bg-white">
+      <header className="border-b border-zinc-200 bg-white sticky top-0 z-40">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="flex h-14 items-center justify-between">
-            <div className="flex items-center gap-8">
-              <NavLink to="/" className="font-semibold tracking-tight">
+            <div className="flex items-center gap-4 md:gap-8">
+              <NavLink to="/" className="font-semibold tracking-tight text-sm sm:text-base whitespace-nowrap">
                 CELR Liquor Price Book
               </NavLink>
-              {isAuthed ? (
+              {isAuthed && (
                 <nav className="hidden md:flex items-center gap-1">
                   {NAV.map((item) => (
-                    <NavLink
-                      key={item.to}
-                      to={item.to}
-                      end={item.to === "/"}
-                      className={({ isActive }) =>
-                        [
-                          "px-3 py-1.5 rounded-md text-sm",
-                          isActive
-                            ? "bg-zinc-900 text-white"
-                            : "text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100",
-                        ].join(" ")
-                      }
-                    >
+                    <NavLink key={item.to} to={item.to} end={item.to === "/"} className={navLinkClass}>
                       {item.label}
                     </NavLink>
                   ))}
                 </nav>
-              ) : null}
+              )}
             </div>
-            {isAuthed ? (
-              <NavLink
-                to="/settings"
-                className="text-sm text-zinc-600 hover:text-zinc-900"
-              >
-                Settings
-              </NavLink>
-            ) : null}
+            <div className="flex items-center gap-3">
+              {isAuthed && (
+                <NavLink to="/settings" className="text-sm text-zinc-600 hover:text-zinc-900 hidden sm:block">
+                  Settings
+                </NavLink>
+              )}
+              {/* Mobile hamburger */}
+              {isAuthed && (
+                <button
+                  onClick={() => setMobileOpen(!mobileOpen)}
+                  className="md:hidden p-2 -mr-2 rounded-md text-zinc-600 hover:bg-zinc-100"
+                  aria-label="Toggle menu"
+                >
+                  {mobileOpen ? (
+                    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  ) : (
+                    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+                    </svg>
+                  )}
+                </button>
+              )}
+            </div>
           </div>
         </div>
+
+        {/* Mobile nav drawer */}
+        {isAuthed && mobileOpen && (
+          <nav className="md:hidden border-t border-zinc-100 bg-white px-4 pb-4 pt-2 space-y-1">
+            {NAV.map((item) => (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                end={item.to === "/"}
+                onClick={closeMobile}
+                className={({ isActive }) =>
+                  `block px-3 py-2 rounded-md text-sm font-medium ${
+                    isActive ? "bg-zinc-900 text-white" : "text-zinc-600 hover:bg-zinc-100"
+                  }`
+                }
+              >
+                {item.label}
+              </NavLink>
+            ))}
+            <NavLink
+              to="/settings"
+              onClick={closeMobile}
+              className={({ isActive }) =>
+                `block px-3 py-2 rounded-md text-sm font-medium ${
+                  isActive ? "bg-zinc-900 text-white" : "text-zinc-600 hover:bg-zinc-100"
+                }`
+              }
+            >
+              Settings
+            </NavLink>
+          </nav>
+        )}
       </header>
 
       <main className="flex-1">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8">{children}</div>
+        <div className="mx-auto max-w-7xl px-3 sm:px-6 lg:px-8 py-4 sm:py-8">{children}</div>
       </main>
 
       <footer className="border-t border-zinc-200 bg-white">

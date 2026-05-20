@@ -43,9 +43,9 @@ function MoverPanel({ title, subtitle, rows, loading, emptyHint, limit = 10 }: {
                 <span className={`w-5 text-center ${change < 0 ? "text-emerald-600" : change > 0 ? "text-red-500" : "text-zinc-400"}`}>
                   {change < 0 ? "\u2193" : change > 0 ? "\u2191" : "\u2192"}
                 </span>
-                <Link to={`/catalog/${m.code}`} className="font-mono text-xs hover:underline w-20 shrink-0">{m.code}</Link>
+                <Link to={`/catalog/${m.code}`} className="font-mono text-xs hover:underline w-20 shrink-0 hidden sm:inline">{m.code}</Link>
                 <span className="flex-1 truncate text-zinc-700">{m.description ?? "\u2014"}</span>
-                <span className="tabular-nums text-zinc-600 w-20 text-right">{money(m.case_cost)}</span>
+                <span className="tabular-nums text-zinc-600 w-20 text-right hidden sm:inline">{money(m.case_cost)}</span>
                 <span className={`tabular-nums w-16 text-right font-medium ${pctClass(m.case_cost_pct)}`}>{pct(m.case_cost_pct)}</span>
               </li>
             );
@@ -99,7 +99,7 @@ export default function Dashboard() {
   return (
     <div className="space-y-6">
       <header className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
+        <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">Dashboard</h1>
         <p className="text-sm text-zinc-600">
           Welcome{username ? `, ${username}` : ""}.
           {s ? ` ${s.edition_label} edition loaded.` : " Loading..."}

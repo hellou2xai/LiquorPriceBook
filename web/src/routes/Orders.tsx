@@ -41,8 +41,9 @@ const columns: Column<OrderSummary>[] = [
   },
   {
     key: "division",
-    label: "Division",
+    label: "Div",
     sortable: true,
+    hideBelow: "sm",
     render: (o) => (
       <span className="font-mono text-xs text-zinc-600">{o.division ?? "\u2014"}</span>
     ),
@@ -60,6 +61,7 @@ const columns: Column<OrderSummary>[] = [
     label: "Items",
     sortable: true,
     align: "right",
+    hideBelow: "sm",
     render: (o) => <span className="tabular-nums">{o.item_count}</span>,
     sortValue: (o) => o.item_count,
   },
@@ -68,14 +70,16 @@ const columns: Column<OrderSummary>[] = [
     label: "Cases",
     sortable: true,
     align: "right",
+    hideBelow: "sm",
     render: (o) => <span className="tabular-nums">{o.total_cases}</span>,
     sortValue: (o) => o.total_cases,
   },
   {
     key: "invoice_total",
-    label: "Invoice Total",
+    label: "Invoice",
     sortable: true,
     align: "right",
+    hideBelow: "md",
     render: (o) => <span className="tabular-nums">{money(o.invoice_total)}</span>,
     sortValue: (o) => (o.invoice_total ? parseFloat(o.invoice_total) : null),
   },
@@ -84,6 +88,7 @@ const columns: Column<OrderSummary>[] = [
     label: "RIP Rebate",
     sortable: true,
     align: "right",
+    hideBelow: "md",
     render: (o) => (
       <span className="tabular-nums text-emerald-700">{money(o.rip_rebate_total)}</span>
     ),
@@ -103,6 +108,7 @@ const columns: Column<OrderSummary>[] = [
     key: "updated_at",
     label: "Updated",
     sortable: true,
+    hideBelow: "lg",
     render: (o) => (
       <span className="text-xs text-zinc-500">
         {new Date(o.updated_at).toLocaleDateString("en-US", {
@@ -169,10 +175,10 @@ export default function Orders() {
   }
 
   return (
-    <div className="space-y-5">
-      <header className="flex items-start justify-between gap-4">
+    <div className="space-y-4 sm:space-y-5">
+      <header className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
         <div className="space-y-1">
-          <h1 className="text-2xl font-semibold tracking-tight">Orders</h1>
+          <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">Orders</h1>
           <p className="text-sm text-zinc-600">
             Create named orders with quantities, division targeting, and payment analysis.
             Star products on the <Link to="/watchlist" className="text-zinc-900 underline hover:text-zinc-700">Tracked</Link> page, then copy them into orders here.
@@ -180,7 +186,7 @@ export default function Orders() {
         </div>
         <button
           onClick={() => setShowCreate((v) => !v)}
-          className="rounded-md bg-zinc-900 px-3.5 py-1.5 text-sm font-medium text-white hover:bg-zinc-800 transition-colors"
+          className="rounded-md bg-zinc-900 px-3.5 py-1.5 text-sm font-medium text-white hover:bg-zinc-800 transition-colors self-start whitespace-nowrap"
         >
           {showCreate ? "Cancel" : "New Order"}
         </button>
@@ -245,9 +251,9 @@ export default function Orders() {
       )}
 
       {/* Filters */}
-      <div className="space-y-3">
+      <div className="space-y-2 sm:space-y-3">
         {/* Status pills */}
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 flex-wrap">
           <span className="text-xs text-zinc-500 mr-1">Status</span>
           {STATUSES.map((s) => (
             <button
@@ -265,7 +271,7 @@ export default function Orders() {
         </div>
 
         {/* Division pills */}
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 flex-wrap">
           <span className="text-xs text-zinc-500 mr-1">Division</span>
           {DIVISIONS.map((d) => (
             <button
@@ -292,7 +298,7 @@ export default function Orders() {
             Failed to load orders: {(ordersQ.error as Error).message}
           </div>
         ) : rows.length === 0 ? (
-            <div className="py-16 text-center space-y-4">
+            <div className="py-12 sm:py-16 text-center space-y-4 px-4">
               <div className="text-zinc-400 text-4xl">📋</div>
               <div className="space-y-1">
                 <p className="text-zinc-700 font-medium">No orders yet</p>

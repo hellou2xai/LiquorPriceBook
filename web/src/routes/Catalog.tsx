@@ -205,7 +205,7 @@ function FilterSidebar({
     (filters.maxPrice ? 1 : 0);
 
   return (
-    <aside className="w-[220px] flex-shrink-0 space-y-1 pr-4">
+    <aside className="w-full space-y-1 md:pr-4">
       <div className="flex items-center justify-between pb-2 border-b border-zinc-200">
         <h2 className="text-sm font-bold text-zinc-800">Filters</h2>
         {activeCount > 0 && (
@@ -444,6 +444,7 @@ export default function Catalog() {
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [page, setPage] = useState(0);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // Debounce search
   useMemo(() => {
@@ -514,9 +515,9 @@ export default function Catalog() {
 
   return (
     <div className="space-y-5">
-      <header className="flex items-start justify-between">
+      <header className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
         <div className="space-y-1">
-          <h1 className="text-2xl font-semibold tracking-tight">Catalog</h1>
+          <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">Catalog</h1>
           <p className="text-sm text-zinc-600">
             {productsQ.data ? (
               <>
@@ -535,7 +536,7 @@ export default function Catalog() {
             onChange={(e) =>
               updateFilters({ ...filters, sort: e.target.value as SortKey })
             }
-            className="rounded-md border border-zinc-300 bg-white px-2.5 py-2 text-sm"
+            className="rounded-md border border-zinc-300 bg-white px-2.5 py-2 text-sm w-full sm:w-auto"
           >
             <option value="name">Sort by name</option>
             <option value="case_cost_asc">Price (low to high)</option>
@@ -556,13 +557,31 @@ export default function Catalog() {
       {/* Active filter chips */}
       <ActiveFilterChips filters={filters} onChange={updateFilters} />
 
+      {/* Mobile filters toggle */}
+      <button
+        className="md:hidden flex items-center gap-2 rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-50"
+        onClick={() => setSidebarOpen(!sidebarOpen)}
+      >
+        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2a1 1 0 01-.293.707L13 13.414V19a1 1 0 01-.553.894l-4 2A1 1 0 017 21v-7.586L3.293 6.707A1 1 0 013 6V4z" />
+        </svg>
+        Filters
+        {(filters.categories.size + filters.brands.size + filters.divisions.size + filters.sizes.size + (filters.hasRip !== null ? 1 : 0) + (filters.minPrice ? 1 : 0) + (filters.maxPrice ? 1 : 0)) > 0 && (
+          <span className="inline-flex items-center justify-center rounded-full bg-zinc-800 text-white text-[10px] font-bold w-4 h-4">
+            {filters.categories.size + filters.brands.size + filters.divisions.size + filters.sizes.size + (filters.hasRip !== null ? 1 : 0) + (filters.minPrice ? 1 : 0) + (filters.maxPrice ? 1 : 0)}
+          </span>
+        )}
+      </button>
+
       {/* Sidebar + Content */}
-      <div className="flex gap-0">
-        <FilterSidebar
-          filters={filters}
-          onChange={updateFilters}
-          facets={facetsQ.data}
-        />
+      <div className="flex flex-col md:flex-row gap-0">
+        <div className={`${sidebarOpen ? "block w-full" : "hidden"} md:block md:w-[220px] md:flex-shrink-0`}>
+          <FilterSidebar
+            filters={filters}
+            onChange={updateFilters}
+            facets={facetsQ.data}
+          />
+        </div>
 
         {/* Product table */}
         <div className="flex-1 min-w-0">
@@ -579,17 +598,17 @@ export default function Catalog() {
                     >
                       Description {filters.sort === "name" && <span className="text-[10px]">▲</span>}
                     </th>
-                    <th className="px-3 py-2">Brand</th>
-                    <th className="px-3 py-2">Size</th>
+                    <th className="px-3 py-2 hidden md:table-cell">Brand</th>
+                    <th className="px-3 py-2 hidden sm:table-cell">Size</th>
                     <th
                       className={`px-3 py-2 text-right cursor-pointer select-none hover:text-zinc-700 ${filters.sort.startsWith("case_cost") ? "text-zinc-900" : ""}`}
                       onClick={() => updateFilters({ ...filters, sort: filters.sort === "case_cost_asc" ? "case_cost_desc" : "case_cost_asc" })}
                     >
                       Case {filters.sort === "case_cost_asc" ? <span className="text-[10px]">▲</span> : filters.sort === "case_cost_desc" ? <span className="text-[10px]">▼</span> : null}
                     </th>
-                    <th className="px-3 py-2 text-right">Btl</th>
-                    <th className="px-3 py-2 text-right">MoM</th>
-                    <th className="px-3 py-2">Top RIP</th>
+                    <th className="px-3 py-2 text-right hidden sm:table-cell">Btl</th>
+                    <th className="px-3 py-2 text-right hidden md:table-cell">MoM</th>
+                    <th className="px-3 py-2 hidden md:table-cell">Top RIP</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-100">
@@ -634,20 +653,20 @@ export default function Catalog() {
                             </span>
                           )}
                         </td>
-                        <td className="px-3 py-2 text-zinc-600 text-xs">{p.brand_slug ?? "\u2014"}</td>
-                        <td className="px-3 py-2 text-zinc-600">{p.size ?? "\u2014"}</td>
+                        <td className="px-3 py-2 text-zinc-600 text-xs hidden md:table-cell">{p.brand_slug ?? "\u2014"}</td>
+                        <td className="px-3 py-2 text-zinc-600 hidden sm:table-cell">{p.size ?? "\u2014"}</td>
                         <td className="px-3 py-2 text-right tabular-nums">
                           {money(p.case_cost)}
                         </td>
-                        <td className="px-3 py-2 text-right tabular-nums">
+                        <td className="px-3 py-2 text-right tabular-nums hidden sm:table-cell">
                           {money(p.btl_cost)}
                         </td>
                         <td
-                          className={`px-3 py-2 text-right tabular-nums ${pctClass(p.case_cost_pct)}`}
+                          className={`px-3 py-2 text-right tabular-nums hidden md:table-cell ${pctClass(p.case_cost_pct)}`}
                         >
                           {pct(p.case_cost_pct)}
                         </td>
-                        <td className="px-3 py-2">
+                        <td className="px-3 py-2 hidden md:table-cell">
                           {p.has_rip ? (
                             <span className="inline-flex items-center rounded-md bg-amber-50 border border-amber-200 px-2 py-0.5 text-xs font-medium text-amber-800">
                               {p.top_rip_tier ?? "RIP"} &middot; save{" "}

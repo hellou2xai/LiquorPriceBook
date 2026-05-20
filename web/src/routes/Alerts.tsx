@@ -52,6 +52,7 @@ export default function Alerts() {
       key: "product_code",
       label: "Product",
       sortable: true,
+      hideBelow: "sm",
       sortValue: (a) => a.product_code ?? "",
       render: (a) =>
         a.product_code ? (
@@ -64,6 +65,7 @@ export default function Alerts() {
       key: "details",
       label: "Details",
       sortable: false,
+      hideBelow: "md",
       render: (a) => (
         <span className="text-zinc-700">
           {String((a.payload as Record<string, unknown>).description ?? "")}
@@ -91,7 +93,7 @@ export default function Alerts() {
   return (
     <div className="space-y-5">
       <header className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight">Alerts</h1>
+        <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">Alerts</h1>
         <p className="text-sm text-zinc-600">
           Fired by the rules engine at the end of every successful ingest.
         </p>

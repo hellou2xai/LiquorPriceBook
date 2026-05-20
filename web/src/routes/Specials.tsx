@@ -98,7 +98,7 @@ export default function Specials() {
   return (
     <div className="space-y-5">
       <header className="space-y-1">
-        <h1 className="text-2xl font-semibold tracking-tight">
+        <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">
           Web Specials
         </h1>
         <p className="text-sm text-zinc-600">
@@ -183,10 +183,10 @@ export default function Specials() {
                     <tr>
                       <th className="px-4 py-1.5">Type</th>
                       <th className="px-4 py-1.5">Description</th>
-                      <th className="px-4 py-1.5">Valid Dates</th>
-                      <th className="px-4 py-1.5">Size</th>
-                      <th className="px-4 py-1.5">Product</th>
-                      <th className="px-4 py-1.5 text-right">
+                      <th className="px-4 py-1.5 hidden md:table-cell">Valid Dates</th>
+                      <th className="px-4 py-1.5 hidden sm:table-cell">Size</th>
+                      <th className="px-4 py-1.5 hidden sm:table-cell">Product</th>
+                      <th className="px-4 py-1.5 text-right hidden md:table-cell">
                         Regular Case
                       </th>
                       <th className="px-4 py-1.5 text-right">Deal</th>
@@ -247,7 +247,7 @@ function SpecialRow({ special: s }: { special: WebSpecial }) {
       <td className="px-4 py-2 font-medium text-zinc-900">
         {s.description}
       </td>
-      <td className="px-4 py-2">
+      <td className="px-4 py-2 hidden md:table-cell">
         <div className="flex flex-col gap-0.5">
           <span className="text-xs text-zinc-700 font-medium whitespace-nowrap">
             {fmtDate(s.start_date)} &ndash; {fmtDate(s.end_date)}
@@ -255,8 +255,8 @@ function SpecialRow({ special: s }: { special: WebSpecial }) {
           <CountdownBadge days={s.days_remaining} />
         </div>
       </td>
-      <td className="px-4 py-2 text-zinc-500">{s.size ?? "\u2014"}</td>
-      <td className="px-4 py-2">
+      <td className="px-4 py-2 text-zinc-500 hidden sm:table-cell">{s.size ?? "\u2014"}</td>
+      <td className="px-4 py-2 hidden sm:table-cell">
         {s.product_code ? (
           <Link
             to={`/catalog/${s.product_code}`}
@@ -268,7 +268,7 @@ function SpecialRow({ special: s }: { special: WebSpecial }) {
           <span className="text-zinc-300 text-xs">unlinked</span>
         )}
       </td>
-      <td className="px-4 py-2 text-right tabular-nums">
+      <td className="px-4 py-2 text-right tabular-nums hidden md:table-cell">
         {money(s.product_case_cost)}
       </td>
       <td className="px-4 py-2 text-right">

@@ -589,20 +589,20 @@ export default function Watchlist() {
           </div>
         </td>
 
-        <td className="px-2 py-2 text-zinc-600 text-xs">{item.category_display ?? "\u2014"}</td>
-        <td className="px-2 py-2 text-zinc-600 text-xs">{item.brand_display ?? "\u2014"}</td>
-        <td className="px-2 py-2 text-zinc-500 text-[10px] font-mono">{item.divisions ?? "\u2014"}</td>
+        <td className="px-2 py-2 text-zinc-600 text-xs hidden lg:table-cell">{item.category_display ?? "\u2014"}</td>
+        <td className="px-2 py-2 text-zinc-600 text-xs hidden lg:table-cell">{item.brand_display ?? "\u2014"}</td>
+        <td className="px-2 py-2 text-zinc-500 text-[10px] font-mono hidden lg:table-cell">{item.divisions ?? "\u2014"}</td>
 
         {/* Regular Case */}
         <td className="px-2 py-2 text-right tabular-nums">{money(item.case_cost)}</td>
 
         {/* Trend */}
-        <td className="px-2 py-2 text-right">
+        <td className="px-2 py-2 text-right hidden sm:table-cell">
           <PriceTrend item={item} />
         </td>
 
         {/* RIP Details — best tier */}
-        <td className="px-2 py-2">
+        <td className="px-2 py-2 hidden md:table-cell">
           {item.has_rip && item.rip_tier ? (
             <div>
               <span className="inline-flex items-center rounded-md bg-amber-50 border border-amber-200 px-1.5 py-0.5 text-[10px] font-medium text-amber-800">
@@ -621,12 +621,12 @@ export default function Watchlist() {
         </td>
 
         {/* After RIP Case */}
-        <td className={`px-2 py-2 text-right tabular-nums font-medium ${hasRipPrice ? "text-emerald-700" : ""}`}>
+        <td className={`px-2 py-2 text-right tabular-nums font-medium hidden sm:table-cell ${hasRipPrice ? "text-emerald-700" : ""}`}>
           {money(item.effective_case ?? item.case_cost)}
         </td>
 
         {/* GP% w/RIP */}
-        <td className="px-2 py-2 text-right tabular-nums">
+        <td className="px-2 py-2 text-right tabular-nums hidden md:table-cell">
           {item.rip_discount_pct ? (
             <span className="text-emerald-700 font-medium text-xs">{parseFloat(item.rip_discount_pct).toFixed(1)}%</span>
           ) : (
@@ -635,12 +635,12 @@ export default function Watchlist() {
         </td>
 
         {/* Target */}
-        <td className="px-2 py-2">
+        <td className="px-2 py-2 hidden lg:table-cell">
           <TargetPrice code={item.product_code} field="target_case_price" initial={item.target_case_price} />
         </td>
 
         {/* Note */}
-        <td className="px-2 py-2">
+        <td className="px-2 py-2 hidden lg:table-cell">
           <InlineNote code={item.product_code} initial={item.notes} />
         </td>
 
@@ -728,14 +728,14 @@ export default function Watchlist() {
 
   return (
     <div className="space-y-4">
-      <header className="flex items-start justify-between">
+      <header className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
         <div className="space-y-1">
-          <h1 className="text-2xl font-semibold tracking-tight">My Order List</h1>
+          <h1 className="text-xl sm:text-2xl font-semibold tracking-tight">My Order List</h1>
           <p className="text-sm text-zinc-600">
             {q.data ? `${q.data.length} saved product${q.data.length === 1 ? "" : "s"}` : "Loading..."}
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <button onClick={() => setShowTemplates(!showTemplates)} className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-xs hover:bg-zinc-50">Templates</button>
           <button onClick={() => setShowHistory(!showHistory)} className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-xs hover:bg-zinc-50">History</button>
           <button onClick={() => exportCsv(items, cart)} disabled={summary.totalItems === 0} className="rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-xs hover:bg-zinc-50 disabled:opacity-40">Export CSV</button>
@@ -744,7 +744,7 @@ export default function Watchlist() {
 
       {/* Buy Signal Summary */}
       {items.length > 0 && (
-        <div className="flex gap-3 text-xs">
+        <div className="flex flex-wrap gap-2 sm:gap-3 text-xs">
           {signalCounts.BUY_NOW > 0 && (
             <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 border border-emerald-300 px-2.5 py-1 text-emerald-800 font-medium">
               {signalCounts.BUY_NOW} BUY NOW
@@ -868,16 +868,16 @@ export default function Watchlist() {
                 <th className="px-2 py-2 w-7"></th>
                 <th className="px-2 py-2">Signal</th>
                 <th className="px-2 py-2">Product</th>
-                <th className="px-2 py-2">Category</th>
-                <th className="px-2 py-2">Brand</th>
-                <th className="px-2 py-2">Div</th>
+                <th className="px-2 py-2 hidden lg:table-cell">Category</th>
+                <th className="px-2 py-2 hidden lg:table-cell">Brand</th>
+                <th className="px-2 py-2 hidden lg:table-cell">Div</th>
                 <th className="px-2 py-2 text-right">Case</th>
-                <th className="px-2 py-2 text-right">Trend</th>
-                <th className="px-2 py-2">RIP</th>
-                <th className="px-2 py-2 text-right">After RIP</th>
-                <th className="px-2 py-2 text-right">GP%</th>
-                <th className="px-2 py-2 text-right">Target</th>
-                <th className="px-2 py-2">Note</th>
+                <th className="px-2 py-2 text-right hidden sm:table-cell">Trend</th>
+                <th className="px-2 py-2 hidden md:table-cell">RIP</th>
+                <th className="px-2 py-2 text-right hidden sm:table-cell">After RIP</th>
+                <th className="px-2 py-2 text-right hidden md:table-cell">GP%</th>
+                <th className="px-2 py-2 text-right hidden lg:table-cell">Target</th>
+                <th className="px-2 py-2 hidden lg:table-cell">Note</th>
                 <th className="px-2 py-2 text-center">Qty</th>
                 <th className="px-2 py-2"></th>
               </tr>
@@ -912,8 +912,8 @@ export default function Watchlist() {
 
         {/* Summary bar */}
         {items.length > 0 && (
-          <div className="border-t border-zinc-200 bg-zinc-50 px-4 py-3 space-y-2">
-            <div className="flex items-center justify-between text-sm">
+          <div className="border-t border-zinc-200 bg-zinc-50 px-3 sm:px-4 py-3 space-y-2">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-sm">
               <div className="text-zinc-700">
                 {summary.totalItems > 0 ? (
                   <span className="font-medium">{summary.totalItems} item{summary.totalItems === 1 ? "" : "s"} in cart · Estimated total: <span className="tabular-nums">{money(summary.totalCost)}</span></span>
