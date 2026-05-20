@@ -385,19 +385,56 @@ export default function OrderDetailPage() {
       },
       {
         key: "rip_save",
-        label: "RIP Save",
+        label: "RIP by Case",
         sortable: true,
-        align: "right" as const,
         sortValue: (item) =>
           item.best_rip_save ? parseFloat(item.best_rip_save) : null,
-        render: (item) =>
-          item.has_rip && item.best_rip_save ? (
-            <span className="text-emerald-700 font-medium tabular-nums">
-              {money(item.best_rip_save)}
-            </span>
-          ) : (
-            <span className="text-zinc-300">\u2014</span>
-          ),
+        render: (item) => {
+          if (!item.has_rip || item.rip_tiers.length === 0) {
+            return <span className="text-zinc-300 text-xs">{"\u2014"}</span>;
+          }
+          return (
+            <div className="space-y-1">
+              {item.rip_tiers.map((rip, i) => {
+                const isBest = rip.save_amount === item.best_rip_save;
+                const meetsQty = item.qty_cases >= rip.tier_cases;
+                return (
+                  <div
+                    key={i}
+                    className={`flex items-center gap-1.5 text-[10px] rounded px-1 py-0.5 ${
+                      meetsQty
+                        ? "bg-emerald-50 border border-emerald-200"
+                        : isBest
+                        ? "bg-amber-50/50 border border-amber-100"
+                        : ""
+                    }`}
+                  >
+                    <span
+                      className={`inline-flex items-center rounded px-1 py-0.5 font-bold tracking-wide ${
+                        meetsQty
+                          ? "bg-emerald-100 text-emerald-800"
+                          : "bg-zinc-100 text-zinc-600"
+                      }`}
+                    >
+                      {rip.tier_cases}CS
+                    </span>
+                    <span className="text-emerald-700 font-medium tabular-nums">
+                      save {money(rip.save_amount)}/cs
+                    </span>
+                    {meetsQty && (
+                      <span className="text-emerald-600 font-medium">
+                        {"\u2713"}
+                      </span>
+                    )}
+                    {isBest && !meetsQty && (
+                      <span className="text-amber-600 text-[9px]">BEST</span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          );
+        },
       },
       {
         key: "line_effective_unit",

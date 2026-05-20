@@ -3,7 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { watchlistApi, ordersApi } from "../lib/api";
-import type { OrderItem } from "../lib/api";
+import type { OrderItem, OrderSummary } from "../lib/api";
 import { money } from "../lib/fmt";
 import FavoriteButton from "../components/FavoriteButton";
 
@@ -233,6 +233,148 @@ function exportCsv(items: OrderItem[], cart: Map<string, CartQty>) {
   URL.revokeObjectURL(url);
 }
 
+// ── Add to Order button ──
+
+function AddToOrderButton({
+  code,
+  qty,
+  draftOrders,
+  onAdded,
+}: {
+  code: string;
+  qty: CartQty;
+  draftOrders: OrderSummary[];
+  onAdded: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [flash, setFlash] = useState<string | null>(null);
+  const [showNew, setShowNew] = useState(false);
+  const [newName, setNewName] = useState("");
+  const ref = useRef<HTMLDivElement>(null);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    if (!open) return;
+    function handler(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  async function addToOrder(orderId: string) {
+    setBusy(true);
+    try {
+      await ordersApi.addItem(orderId, {
+        code,
+        qty_cases: qty.cases || undefined,
+        qty_bottles: qty.bottles || undefined,
+      });
+      onAdded();
+      setFlash("Added!");
+      setTimeout(() => setFlash(null), 1500);
+      setOpen(false);
+    } catch {
+      setFlash("Error");
+      setTimeout(() => setFlash(null), 2000);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function createAndAdd() {
+    if (!newName.trim()) return;
+    setBusy(true);
+    try {
+      const order = await ordersApi.create({ name: newName.trim() });
+      await ordersApi.addItem(order.id, {
+        code,
+        qty_cases: qty.cases || undefined,
+        qty_bottles: qty.bottles || undefined,
+      });
+      onAdded();
+      setFlash("Created & Added!");
+      setTimeout(() => setFlash(null), 1500);
+      setOpen(false);
+      setShowNew(false);
+      setNewName("");
+    } catch {
+      setFlash("Error");
+      setTimeout(() => setFlash(null), 2000);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="relative" ref={ref}>
+      {flash ? (
+        <span className="text-[10px] text-emerald-600 font-medium animate-pulse whitespace-nowrap">{flash}</span>
+      ) : (
+        <button
+          onClick={() => setOpen(!open)}
+          disabled={busy}
+          className="rounded border border-zinc-300 bg-white px-1.5 py-0.5 text-[10px] text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900 whitespace-nowrap disabled:opacity-50"
+          title="Add this product to an order"
+        >
+          + Order
+        </button>
+      )}
+      {open && (
+        <div className="absolute right-0 top-full mt-1 z-20 w-52 rounded-lg border border-zinc-200 bg-white shadow-lg py-1">
+          {draftOrders.length > 0 && (
+            <>
+              <div className="px-3 py-1 text-[10px] uppercase tracking-wide text-zinc-400 font-medium">
+                Add to draft order
+              </div>
+              {draftOrders.map((o) => (
+                <button
+                  key={o.id}
+                  onClick={() => addToOrder(o.id)}
+                  disabled={busy}
+                  className="w-full text-left px-3 py-1.5 text-xs text-zinc-700 hover:bg-zinc-50 disabled:opacity-50 flex items-center justify-between"
+                >
+                  <span className="truncate">{o.name}</span>
+                  <span className="text-[10px] text-zinc-400 ml-2">{o.item_count} items</span>
+                </button>
+              ))}
+              <div className="border-t border-zinc-100 my-1" />
+            </>
+          )}
+          {!showNew ? (
+            <button
+              onClick={() => setShowNew(true)}
+              className="w-full text-left px-3 py-1.5 text-xs text-zinc-700 hover:bg-zinc-50 font-medium"
+            >
+              + Create new order...
+            </button>
+          ) : (
+            <div className="px-3 py-2 space-y-1.5">
+              <input
+                autoFocus
+                type="text"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                placeholder="Order name..."
+                className="w-full rounded border border-zinc-300 px-2 py-1 text-xs focus:border-zinc-900 focus:outline-none"
+                onKeyDown={(e) => { if (e.key === "Enter") createAndAdd(); if (e.key === "Escape") { setShowNew(false); setNewName(""); } }}
+              />
+              <button
+                onClick={createAndAdd}
+                disabled={!newName.trim() || busy}
+                className="w-full rounded bg-zinc-900 px-2 py-1 text-[10px] text-white hover:bg-zinc-800 disabled:opacity-50"
+              >
+                Create & Add
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ══════════════════ Main Component ══════════════════
 
 export default function Watchlist() {
@@ -258,6 +400,14 @@ export default function Watchlist() {
     queryFn: () => watchlistApi.order({ search: debouncedSearch || undefined, category: categoryFilter || undefined }),
     placeholderData: (prev) => prev,
   });
+
+  const qc = useQueryClient();
+  const draftOrdersQ = useQuery({
+    queryKey: ["orders", { status: "draft" }],
+    queryFn: () => ordersApi.list({ status: "draft" }),
+    staleTime: 30_000,
+  });
+  const draftOrders = draftOrdersQ.data ?? [];
 
   const items = useMemo(() => (q.data ? sortItems(q.data, sort) : []), [q.data, sort]);
 
@@ -485,6 +635,16 @@ export default function Watchlist() {
             <RipProgress item={item} cartCases={qty.cases} />
           </div>
         </td>
+
+        {/* Add to Order */}
+        <td className="px-2 py-2">
+          <AddToOrderButton
+            code={item.product_code}
+            qty={qty}
+            draftOrders={draftOrders}
+            onAdded={() => qc.invalidateQueries({ queryKey: ["orders"] })}
+          />
+        </td>
       </tr>
     );
 
@@ -525,8 +685,8 @@ export default function Watchlist() {
               <span className="text-zinc-300 text-[10px]">{"\u2014"}</span>
             )}
           </td>
-          {/* Target, Note, Qty — empty for sub-rows */}
-          <td className="px-2 py-1.5" colSpan={3}></td>
+          {/* Target, Note, Qty, Add to Order — empty for sub-rows */}
+          <td className="px-2 py-1.5" colSpan={4}></td>
         </tr>
       );
     });
@@ -534,7 +694,7 @@ export default function Watchlist() {
     return <>{mainRow}{tierRows}</>;
   }
 
-  const COL_SPAN = 14;
+  const COL_SPAN = 15;
 
   return (
     <div className="space-y-4">
@@ -689,6 +849,7 @@ export default function Watchlist() {
                 <th className="px-2 py-2 text-right">Target</th>
                 <th className="px-2 py-2">Note</th>
                 <th className="px-2 py-2 text-center">Qty</th>
+                <th className="px-2 py-2"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-100">
