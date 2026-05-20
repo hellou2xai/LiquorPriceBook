@@ -57,8 +57,6 @@ export default function Rips() {
     return rows;
   }, [ripsQ.data, search, categoryFilter, stabilityFilter]);
 
-  const sortedRows = useMemo(() => sorted(filteredRows, columns), [filteredRows, sorted]);
-
   const categories = useMemo(() => {
     if (!ripsQ.data) return [];
     const set = new Set<string>();
@@ -169,6 +167,8 @@ export default function Rips() {
         ),
     },
   ];
+
+  const sortedRows = useMemo(() => sorted(filteredRows, columns), [filteredRows, sorted, columns]);
 
   return (
     <div className="space-y-5">

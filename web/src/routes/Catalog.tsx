@@ -579,6 +579,7 @@ export default function Catalog() {
                     >
                       Description {filters.sort === "name" && <span className="text-[10px]">▲</span>}
                     </th>
+                    <th className="px-3 py-2">Brand</th>
                     <th className="px-3 py-2">Size</th>
                     <th
                       className={`px-3 py-2 text-right cursor-pointer select-none hover:text-zinc-700 ${filters.sort.startsWith("case_cost") ? "text-zinc-900" : ""}`}
@@ -594,13 +595,13 @@ export default function Catalog() {
                 <tbody className="divide-y divide-zinc-100">
                   {productsQ.isLoading ? (
                     <tr>
-                      <td colSpan={8} className="px-4 py-6 text-center text-zinc-500">
+                      <td colSpan={9} className="px-4 py-6 text-center text-zinc-500">
                         Loading...
                       </td>
                     </tr>
                   ) : productsQ.data?.items.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="px-4 py-6 text-center text-zinc-500">
+                      <td colSpan={9} className="px-4 py-6 text-center text-zinc-500">
                         No products match your filters.
                       </td>
                     </tr>
@@ -633,6 +634,7 @@ export default function Catalog() {
                             </span>
                           )}
                         </td>
+                        <td className="px-3 py-2 text-zinc-600 text-xs">{p.brand_slug ?? "\u2014"}</td>
                         <td className="px-3 py-2 text-zinc-600">{p.size ?? "\u2014"}</td>
                         <td className="px-3 py-2 text-right tabular-nums">
                           {money(p.case_cost)}

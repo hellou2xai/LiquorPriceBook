@@ -6,6 +6,46 @@ import type { ComboRow } from "../lib/api";
 import { money } from "../lib/fmt";
 import SortableTable, { useSort, Column } from "../components/SortableTable";
 
+const columns: Column<ComboRow>[] = [
+  {
+    key: "sku",
+    label: "SKU",
+    sortable: true,
+    sortValue: (r) => r.sku,
+    render: (r) => <span className="font-mono text-xs whitespace-nowrap">{r.sku}</span>,
+  },
+  {
+    key: "subcategory",
+    label: "Category",
+    sortable: true,
+    sortValue: (r) => r.subcategory ?? "",
+    render: (r) => <span className="text-zinc-600 whitespace-nowrap">{r.subcategory ?? "\u2014"}</span>,
+  },
+  {
+    key: "item_code",
+    label: "Item Code",
+    sortable: true,
+    sortValue: (r) => r.item_code ?? "",
+    render: (r) => <span className="font-mono text-xs text-zinc-600 whitespace-nowrap">{r.item_code ?? "\u2014"}</span>,
+  },
+  {
+    key: "contains",
+    label: "Contains",
+    sortable: true,
+    sortValue: (r) => r.contains ?? "",
+    className: "max-w-md truncate",
+    render: (r) => <span title={r.contains ?? ""}>{r.contains ?? "\u2014"}</span>,
+  },
+  {
+    key: "front_line_price",
+    label: "Front-Line Price",
+    sortable: true,
+    align: "right",
+    sortValue: (r) => r.front_line_price ? parseFloat(r.front_line_price) : null,
+    render: (r) => <span className="tabular-nums whitespace-nowrap">{money(r.front_line_price)}</span>,
+  },
+];
+
 export default function Combos() {
   const [search, setSearch] = useState("");
   const [selectedCat, setSelectedCat] = useState("");
@@ -32,46 +72,6 @@ export default function Combos() {
 
   const rows = combosQ.data ?? [];
   const sortedRows = useMemo(() => sorted(rows, columns), [rows, sorted]);
-
-  const columns: Column<ComboRow>[] = [
-    {
-      key: "sku",
-      label: "SKU",
-      sortable: true,
-      sortValue: (r) => r.sku,
-      render: (r) => <span className="font-mono text-xs whitespace-nowrap">{r.sku}</span>,
-    },
-    {
-      key: "subcategory",
-      label: "Category",
-      sortable: true,
-      sortValue: (r) => r.subcategory ?? "",
-      render: (r) => <span className="text-zinc-600 whitespace-nowrap">{r.subcategory ?? "\u2014"}</span>,
-    },
-    {
-      key: "item_code",
-      label: "Item Code",
-      sortable: true,
-      sortValue: (r) => r.item_code ?? "",
-      render: (r) => <span className="font-mono text-xs text-zinc-600 whitespace-nowrap">{r.item_code ?? "\u2014"}</span>,
-    },
-    {
-      key: "contains",
-      label: "Contains",
-      sortable: true,
-      sortValue: (r) => r.contains ?? "",
-      className: "max-w-md truncate",
-      render: (r) => <span title={r.contains ?? ""}>{r.contains ?? "\u2014"}</span>,
-    },
-    {
-      key: "front_line_price",
-      label: "Front-Line Price",
-      sortable: true,
-      align: "right",
-      sortValue: (r) => r.front_line_price ? parseFloat(r.front_line_price) : null,
-      render: (r) => <span className="tabular-nums whitespace-nowrap">{money(r.front_line_price)}</span>,
-    },
-  ];
 
   return (
     <div className="space-y-5">

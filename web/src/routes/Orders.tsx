@@ -173,7 +173,10 @@ export default function Orders() {
       <header className="flex items-start justify-between gap-4">
         <div className="space-y-1">
           <h1 className="text-2xl font-semibold tracking-tight">Orders</h1>
-          <p className="text-sm text-zinc-600">Allied Beverage Group</p>
+          <p className="text-sm text-zinc-600">
+            Create named orders with quantities, division targeting, and payment analysis.
+            Star products on the <Link to="/watchlist" className="text-zinc-900 underline hover:text-zinc-700">Tracked</Link> page, then copy them into orders here.
+          </p>
         </div>
         <button
           onClick={() => setShowCreate((v) => !v)}
@@ -288,6 +291,23 @@ export default function Orders() {
           <div className="text-center py-12 text-red-600">
             Failed to load orders: {(ordersQ.error as Error).message}
           </div>
+        ) : rows.length === 0 ? (
+            <div className="py-16 text-center space-y-4">
+              <div className="text-zinc-400 text-4xl">📋</div>
+              <div className="space-y-1">
+                <p className="text-zinc-700 font-medium">No orders yet</p>
+                <p className="text-sm text-zinc-500 max-w-md mx-auto">
+                  Create a new order to start building your next purchase.
+                  You can add products from the Catalog or copy items from your Tracked list.
+                </p>
+              </div>
+              <button
+                onClick={() => setShowCreate(true)}
+                className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 transition-colors"
+              >
+                Create Your First Order
+              </button>
+            </div>
         ) : (
           <SortableTable
             columns={columns}
@@ -295,7 +315,7 @@ export default function Orders() {
             sort={sort}
             onSort={toggle}
             rowKey={(o) => o.id}
-            emptyMessage="No orders yet. Create your first order to get started."
+            emptyMessage="No orders match your filters."
             onRowClick={(o) => navigate(`/orders/${o.id}`)}
           />
         )}

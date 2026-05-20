@@ -35,7 +35,6 @@ export default function Alerts() {
   });
 
   const data = q.data ?? [];
-  const sortedData = useMemo(() => sorted(data, columns), [data, sorted]);
 
   const columns: Column<AlertEvent>[] = [
     {
@@ -86,6 +85,8 @@ export default function Alerts() {
       render: (a) => <span className="text-xs text-zinc-500 whitespace-nowrap">{new Date(a.fired_at).toLocaleString()}</span>,
     },
   ];
+
+  const sortedData = useMemo(() => sorted(data, columns), [data, sorted, columns]);
 
   return (
     <div className="space-y-5">

@@ -47,8 +47,6 @@ export default function Closeouts() {
     return rows;
   }, [q.data, search, minPct, daysFilter]);
 
-  const sortedRows = useMemo(() => sorted(filteredRows, columns), [filteredRows, sorted]);
-
   const stats = useMemo(() => {
     const rows = filteredRows;
     if (rows.length === 0) return null;
@@ -143,6 +141,8 @@ export default function Closeouts() {
         ),
     },
   ];
+
+  const sortedRows = useMemo(() => sorted(filteredRows, columns), [filteredRows, sorted, columns]);
 
   return (
     <div className="space-y-5">
