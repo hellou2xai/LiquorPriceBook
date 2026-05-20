@@ -294,19 +294,7 @@ function FilterSidebar({
       <CategoriesFilter filters={filters} onChange={onChange} />
 
       {/* Brand */}
-      {facets && facets.brands.length > 0 && (
-        <FilterSection title="Brand" count={facets.brands.length} defaultOpen={false}>
-          <SearchableCheckList
-            items={facets.brands.map((b) => ({
-              value: b.slug,
-              label: b.display_name,
-              count: b.product_count,
-            }))}
-            selected={filters.brands}
-            onToggle={(v) => onChange({ ...filters, brands: toggleSet(filters.brands, v) })}
-          />
-        </FilterSection>
-      )}
+      <BrandsFilter filters={filters} onChange={onChange} facets={facets} />
 
       {/* Size */}
       {facets && facets.sizes.length > 0 && (
@@ -363,6 +351,89 @@ function CategoriesFilter({
           onChange({ ...filters, categories: toggleSet(filters.categories, v) })
         }
       />
+    </FilterSection>
+  );
+}
+
+function BrandsFilter({
+  filters,
+  onChange,
+  facets,
+}: {
+  filters: Filters;
+  onChange: (f: Filters) => void;
+  facets: Facets | undefined;
+}) {
+  const [brandSearch, setBrandSearch] = useState("");
+  const [debouncedBrandSearch, setDebouncedBrandSearch] = useState("");
+
+  useMemo(() => {
+    const t = setTimeout(() => setDebouncedBrandSearch(brandSearch), 300);
+    return () => clearTimeout(t);
+  }, [brandSearch]);
+
+  // Server-side brand search when user types
+  const brandsQ = useQuery({
+    queryKey: ["brands-search", debouncedBrandSearch],
+    queryFn: () =>
+      catalogApi.brands({
+        q: debouncedBrandSearch || undefined,
+        limit: 50,
+      }),
+    staleTime: 60_000,
+  });
+
+  const items = useMemo(() => {
+    if (debouncedBrandSearch && brandsQ.data) {
+      return brandsQ.data.map((b) => ({
+        value: b.slug,
+        label: b.display_name,
+        count: b.product_count,
+      }));
+    }
+    // No search: show top brands from facets
+    return (facets?.brands ?? []).slice(0, 15).map((b) => ({
+      value: b.slug,
+      label: b.display_name,
+      count: b.product_count,
+    }));
+  }, [debouncedBrandSearch, brandsQ.data, facets?.brands]);
+
+  const totalBrands = facets?.brands.length ?? 0;
+
+  return (
+    <FilterSection title="Brand" count={totalBrands} defaultOpen={false}>
+      <div className="space-y-1.5">
+        <input
+          type="text"
+          placeholder="Search brands..."
+          value={brandSearch}
+          onChange={(e) => setBrandSearch(e.target.value)}
+          className="w-full rounded border border-zinc-200 bg-white px-2 py-1 text-xs placeholder:text-zinc-400 focus:border-zinc-400 focus:outline-none"
+        />
+        <div className="max-h-[240px] overflow-y-auto space-y-0.5">
+          {items.map((item) => (
+            <CheckItem
+              key={item.value}
+              label={item.label}
+              count={item.count}
+              checked={filters.brands.has(item.value)}
+              onChange={() =>
+                onChange({
+                  ...filters,
+                  brands: toggleSet(filters.brands, item.value),
+                })
+              }
+            />
+          ))}
+          {debouncedBrandSearch && brandsQ.isLoading && (
+            <p className="text-[10px] text-zinc-400 pl-1">Searching...</p>
+          )}
+          {debouncedBrandSearch && !brandsQ.isLoading && items.length === 0 && (
+            <p className="text-[10px] text-zinc-400 pl-1">No brands found</p>
+          )}
+        </div>
+      </div>
     </FilterSection>
   );
 }
