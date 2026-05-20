@@ -397,7 +397,10 @@ def parse_main_catalog(pages, source):
                 divs = extract_divisions(text)
                 if divs:
                     current_divisions[lane] = divs
-                if _is_brand_header(text):
+                if _is_brand_header(text) and not divs:
+                    # In Allied format, division codes appear on sub-brand
+                    # lines, not brand lines. Brand headers have country in
+                    # parens (e.g. "(SWEDEN)") or no parens at all.
                     current_brand[lane] = text
                     current_sub[lane] = None
                     last_sub[lane] = None  # Reset carry-forward on new brand
