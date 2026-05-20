@@ -569,6 +569,15 @@ export default function Watchlist() {
     const rips = item.all_rips ?? [];
     const hasMultipleRips = rips.length > 1;
 
+    // Find the best qualifying RIP tier for the user's cart quantity.
+    // Tiers are sorted by tier_cases ascending. Pick the highest tier
+    // the user qualifies for (tier_cases <= qty.cases).
+    const qualifiedRip = qty.cases > 0
+      ? [...rips].reverse().find((r) => qty.cases >= r.tier_cases)
+      : null;
+    const afterRipCase = qualifiedRip?.effective_case;
+    const afterRipGp = qualifiedRip?.discount_pct;
+
     const mainRow = (
       <tr key={item.product_code} className={`hover:bg-brand-tan align-top ${item.buy_signal === "BUY_NOW" ? "bg-emerald-50/30" : item.buy_signal === "DEFER" ? "bg-amber-50/20" : ""}`}>
         <td className="px-2 py-2">
@@ -621,14 +630,18 @@ export default function Watchlist() {
           )}
         </td>
 
-        {/* After RIP Case — only show when user has selected a RIP tier */}
-        <td className="px-2 py-2 text-right tabular-nums font-medium hidden sm:table-cell">
-          <span className="text-zinc-300 text-xs">{"\u2014"}</span>
+        {/* After RIP Case — based on cart qty matching a RIP tier */}
+        <td className={`px-2 py-2 text-right tabular-nums font-medium hidden sm:table-cell ${afterRipCase ? "text-emerald-700" : ""}`}>
+          {afterRipCase ? money(afterRipCase) : <span className="text-zinc-300 text-xs">{"\u2014"}</span>}
         </td>
 
-        {/* GP% w/RIP — only show when user has selected a RIP tier */}
+        {/* GP% w/RIP — based on cart qty matching a RIP tier */}
         <td className="px-2 py-2 text-right tabular-nums hidden md:table-cell">
-          <span className="text-zinc-300 text-xs">{"\u2014"}</span>
+          {afterRipGp ? (
+            <span className="text-emerald-700 font-medium text-xs">{parseFloat(afterRipGp).toFixed(1)}%</span>
+          ) : (
+            <span className="text-zinc-300 text-xs">{"\u2014"}</span>
+          )}
         </td>
 
         {/* Target */}
@@ -647,13 +660,21 @@ export default function Watchlist() {
             <div className="flex items-center gap-1">
               <span className="w-8 text-zinc-500 text-[10px]">Btl</span>
               <button onClick={() => setQty(item.product_code, { bottles: Math.max(0, qty.bottles - 1) })} className="rounded border border-zinc-300 bg-white w-5 h-5 flex items-center justify-center hover:bg-zinc-100 disabled:opacity-40 text-xs" disabled={qty.bottles === 0}>-</button>
-              <span className="w-5 text-center tabular-nums font-medium text-xs">{qty.bottles}</span>
+              <input
+                type="number" min={0} value={qty.bottles}
+                onChange={(e) => setQty(item.product_code, { bottles: Math.max(0, parseInt(e.target.value) || 0) })}
+                className="w-8 text-center tabular-nums font-medium text-xs rounded border border-zinc-200 bg-white py-0 focus:border-zinc-400 focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+              />
               <button onClick={() => setQty(item.product_code, { bottles: qty.bottles + 1 })} className="rounded border border-zinc-300 bg-white w-5 h-5 flex items-center justify-center hover:bg-zinc-100 text-xs">+</button>
             </div>
             <div className="flex items-center gap-1">
               <span className="w-8 text-zinc-500 text-[10px]">Case</span>
               <button onClick={() => setQty(item.product_code, { cases: Math.max(0, qty.cases - 1) })} className="rounded border border-zinc-300 bg-white w-5 h-5 flex items-center justify-center hover:bg-zinc-100 disabled:opacity-40 text-xs" disabled={qty.cases === 0}>-</button>
-              <span className="w-5 text-center tabular-nums font-medium text-xs">{qty.cases}</span>
+              <input
+                type="number" min={0} value={qty.cases}
+                onChange={(e) => setQty(item.product_code, { cases: Math.max(0, parseInt(e.target.value) || 0) })}
+                className="w-8 text-center tabular-nums font-medium text-xs rounded border border-zinc-200 bg-white py-0 focus:border-zinc-400 focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+              />
               <button onClick={() => setQty(item.product_code, { cases: qty.cases + 1 })} className="rounded border border-zinc-300 bg-white w-5 h-5 flex items-center justify-center hover:bg-zinc-100 text-xs">+</button>
             </div>
             <RipProgress item={item} cartCases={qty.cases} />
