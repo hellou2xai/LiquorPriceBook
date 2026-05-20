@@ -17,9 +17,7 @@ Views:
 
 from __future__ import annotations
 
-from collections import defaultdict
 from decimal import Decimal
-from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
@@ -282,7 +280,10 @@ def _new_rips(session, current, previous, limit, user):
             brand=r.brand, category=r.category, divisions=r.divisions,
             case_cost=_money(r.case_cost),
             rip_save=_money(r.best_save),
-            effective_cost=_money(r.case_cost - r.best_save) if r.case_cost and r.best_save else None,
+            effective_cost=(
+                _money(r.case_cost - r.best_save)
+                if r.case_cost and r.best_save else None
+            ),
             rip_tier=f"{r.min_tier}CS",
             tag="New RIP",
         )
@@ -393,8 +394,14 @@ def _best_value(session, current, _previous, limit, user):
             case_cost=_money(r.case_cost),
             rip_save=_money(r.best_save),
             effective_cost=_money(r.case_cost - r.best_save) if r.best_save else None,
-            pct_change=round(float(r.best_save) / float(r.case_cost) * 100, 1) if r.case_cost and r.best_save else None,
-            tag=f"Save {round(float(r.best_save) / float(r.case_cost) * 100, 1)}%" if r.case_cost and r.best_save else None,
+            pct_change=(
+                round(float(r.best_save) / float(r.case_cost) * 100, 1)
+                if r.case_cost and r.best_save else None
+            ),
+            tag=(
+                f"Save {round(float(r.best_save) / float(r.case_cost) * 100, 1)}%"
+                if r.case_cost and r.best_save else None
+            ),
         )
         for r in rows
     ]
