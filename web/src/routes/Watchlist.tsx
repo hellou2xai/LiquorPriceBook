@@ -268,16 +268,17 @@ function AddToOrderButton({
     try {
       await ordersApi.addItem(orderId, {
         code,
-        qty_cases: qty.cases || undefined,
-        qty_bottles: qty.bottles || undefined,
+        qty_cases: qty.cases > 0 ? qty.cases : 0,
+        qty_bottles: qty.bottles > 0 ? qty.bottles : 0,
       });
       onAdded();
       setFlash("Added!");
       setTimeout(() => setFlash(null), 1500);
       setOpen(false);
-    } catch {
-      setFlash("Error");
-      setTimeout(() => setFlash(null), 2000);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Unknown error";
+      setFlash(`Failed: ${msg}`);
+      setTimeout(() => setFlash(null), 3000);
     } finally {
       setBusy(false);
     }
@@ -290,8 +291,8 @@ function AddToOrderButton({
       const order = await ordersApi.create({ name: newName.trim() });
       await ordersApi.addItem(order.id, {
         code,
-        qty_cases: qty.cases || undefined,
-        qty_bottles: qty.bottles || undefined,
+        qty_cases: qty.cases > 0 ? qty.cases : 0,
+        qty_bottles: qty.bottles > 0 ? qty.bottles : 0,
       });
       onAdded();
       setFlash("Created & Added!");
@@ -299,9 +300,10 @@ function AddToOrderButton({
       setOpen(false);
       setShowNew(false);
       setNewName("");
-    } catch {
-      setFlash("Error");
-      setTimeout(() => setFlash(null), 2000);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Unknown error";
+      setFlash(`Failed: ${msg}`);
+      setTimeout(() => setFlash(null), 3000);
     } finally {
       setBusy(false);
     }
@@ -474,42 +476,48 @@ export default function Watchlist() {
   const navigate = useNavigate();
 
   const saveToHistory = useCallback(async () => {
-    if (summary.totalItems === 0) return;
+    if (!items.length) return;
     const name = window.prompt("Enter a name for this order:", `Order ${new Date().toLocaleDateString()}`);
     if (!name || !name.trim()) return;
     setSavingOrder(true);
     try {
       // 1. Create real order via API
       const order = await ordersApi.create({ name: name.trim() });
-      // 2. Copy tracked items into it
+      // 2. Copy ALL tracked items into the order
       await ordersApi.copyFromWatchlist(order.id);
-      // 3. Update quantities for items in the cart
+      // 3. Update quantities for items that have qty set in cart
       const cartRecord = cartToRecord(cart);
+      const failedUpdates: string[] = [];
       const updatePromises = Object.entries(cartRecord).map(([code, qty]) =>
-        ordersApi.updateItem(order.id, code, { qty_cases: qty.cases, qty_bottles: qty.bottles }).catch(() => {})
+        ordersApi.updateItem(order.id, code, { qty_cases: qty.cases, qty_bottles: qty.bottles })
+          .catch(() => { failedUpdates.push(code); })
       );
       await Promise.all(updatePromises);
-      // 4. Save to localStorage history with order ID
+      // 4. Invalidate orders cache so Order page shows the new order
+      qc.invalidateQueries({ queryKey: ["orders"] });
+      qc.invalidateQueries({ queryKey: ["order-detail"] });
+      // 5. Save to localStorage history with order ID
+      const itemCount = items.length;
       const entry: OrderHistoryEntry = {
         id: Date.now().toString(36),
         orderId: order.id,
         name: name.trim(),
         cart: cartRecord,
         totalCost: summary.totalCost,
-        itemCount: summary.totalItems,
+        itemCount,
         savedAt: new Date().toISOString(),
       };
       const updated = [entry, ...history];
       saveHistory(updated);
       setHistoryState(updated);
-      // 5. Navigate to order detail
+      // 6. Navigate to order detail
       navigate(`/orders/${order.id}`);
     } catch (err) {
       alert(`Failed to create order: ${err instanceof Error ? err.message : "Unknown error"}`);
     } finally {
       setSavingOrder(false);
     }
-  }, [cart, summary, history, navigate]);
+  }, [cart, items, summary, history, navigate, qc]);
 
   const loadFromHistory = useCallback((entry: OrderHistoryEntry) => { setCart(recordToMap(entry.cart)); setShowHistory(false); }, []);
 
@@ -642,7 +650,10 @@ export default function Watchlist() {
             code={item.product_code}
             qty={qty}
             draftOrders={draftOrders}
-            onAdded={() => qc.invalidateQueries({ queryKey: ["orders"] })}
+            onAdded={() => {
+              qc.invalidateQueries({ queryKey: ["orders"] });
+              qc.invalidateQueries({ queryKey: ["order-detail"] });
+            }}
           />
         </td>
       </tr>
@@ -881,17 +892,20 @@ export default function Watchlist() {
         </div>
 
         {/* Summary bar */}
-        {summary.totalItems > 0 && (
+        {items.length > 0 && (
           <div className="border-t border-zinc-200 bg-zinc-50 px-4 py-3 space-y-2">
             <div className="flex items-center justify-between text-sm">
-              <div className="text-zinc-700 font-medium">
-                {summary.totalItems} item{summary.totalItems === 1 ? "" : "s"} in cart
+              <div className="text-zinc-700">
+                {summary.totalItems > 0 ? (
+                  <span className="font-medium">{summary.totalItems} item{summary.totalItems === 1 ? "" : "s"} in cart · Estimated total: <span className="tabular-nums">{money(summary.totalCost)}</span></span>
+                ) : (
+                  <span className="text-zinc-500">{items.length} tracked product{items.length === 1 ? "" : "s"} · Set quantities or save all to an order</span>
+                )}
               </div>
-              <div className="flex items-center gap-4">
-                <button onClick={saveToHistory} disabled={savingOrder} className="rounded-md border border-zinc-300 bg-white px-3 py-1 text-xs hover:bg-zinc-50 disabled:opacity-50">
-                  {savingOrder ? "Creating Order..." : "Save Order"}
+              <div className="flex items-center gap-2">
+                <button onClick={saveToHistory} disabled={savingOrder} className="rounded-md bg-zinc-900 text-white px-3 py-1.5 text-xs font-medium hover:bg-zinc-800 disabled:opacity-50">
+                  {savingOrder ? "Creating Order..." : "Save as Order"}
                 </button>
-                <span className="text-zinc-900 font-semibold tabular-nums">Estimated total: {money(summary.totalCost)}</span>
               </div>
             </div>
             {Object.keys(summary.byCat).length > 1 && (
