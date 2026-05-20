@@ -373,6 +373,27 @@ export type Verdict = {
   cached: boolean;
 };
 
+export type WebSpecial = {
+  id: string;
+  kind: "pricing" | "rip";
+  description: string;
+  size: string | null;
+  start_date: string;
+  end_date: string;
+  days_remaining: number;
+  best_case_price: string | null;
+  best_case_tier: string | null;
+  best_btl_price: string | null;
+  tier: string | null;
+  rip_price: string | null;
+  rip_raw: string | null;
+  product_code: string | null;
+  product_description: string | null;
+  product_case_cost: string | null;
+  product_btl_cost: string | null;
+  match_confidence: string | null;
+};
+
 // ---------- API surface ----------
 
 export const adminApi = {
@@ -482,4 +503,9 @@ export const aiApi = {
     api<Verdict>(
       `/api/v1/products/${code}/verdict${_qs({ distributor, refresh: refresh || undefined })}`,
     ),
+};
+
+export const specialsApi = {
+  active: (distributor = "nj-allied") =>
+    api<WebSpecial[]>(`/api/v1/specials${_qs({ distributor })}`),
 };

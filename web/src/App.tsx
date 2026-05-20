@@ -12,6 +12,7 @@ import Combos from "./routes/Combos";
 import Watchlist from "./routes/Watchlist";
 import Alerts from "./routes/Alerts";
 import AdminIngest from "./routes/AdminIngest";
+import Specials from "./routes/Specials";
 import Settings from "./routes/Settings";
 import Login from "./routes/Login";
 
@@ -21,6 +22,7 @@ const NAV = [
   { to: "/rips", label: "RIPs" },
   { to: "/closeouts", label: "Closeouts" },
   { to: "/combos", label: "Combos" },
+  { to: "/specials", label: "Specials" },
   { to: "/watchlist", label: "Order List" },
   { to: "/alerts", label: "Alerts" },
 ];
@@ -96,6 +98,7 @@ export default function App() {
         <Route path="/rips" element={protect(<Rips />)} />
         <Route path="/closeouts" element={protect(<Closeouts />)} />
         <Route path="/combos" element={protect(<Combos />)} />
+        <Route path="/specials" element={protect(<Specials />)} />
         <Route path="/watchlist" element={protect(<Watchlist />)} />
         <Route path="/alerts" element={protect(<Alerts />)} />
         <Route path="/admin/ingest" element={protect(<AdminIngest />)} />
