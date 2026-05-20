@@ -611,18 +611,30 @@ export default function Watchlist() {
           <PriceTrend item={item} />
         </td>
 
-        {/* RIP Details — best tier */}
+        {/* RIP Details — shows qualifying tier based on cart qty */}
         <td className="px-2 py-2 hidden md:table-cell">
-          {item.has_rip && item.rip_tier ? (
+          {qualifiedRip ? (
             <div>
-              <span className="inline-flex items-center rounded-md bg-amber-50 border border-amber-200 px-1.5 py-0.5 text-[10px] font-medium text-amber-800">
-                {item.rip_tier_cases ?? ""}CS
+              <span className="inline-flex items-center rounded-md bg-emerald-50 border border-emerald-300 px-1.5 py-0.5 text-[10px] font-medium text-emerald-800">
+                {qualifiedRip.tier_cases}CS
               </span>
               <div className="text-[10px] text-emerald-700 font-medium mt-0.5">
-                save {money(item.rip_save_amount)}/cs
+                save {money(qualifiedRip.save_amount)}/cs
               </div>
               {hasMultipleRips && (
-                <div className="text-[10px] text-zinc-400 mt-0.5">{rips.length} tiers below</div>
+                <div className="text-[10px] text-zinc-400 mt-0.5">{rips.length} tiers</div>
+              )}
+            </div>
+          ) : item.has_rip && rips.length > 0 ? (
+            <div>
+              <span className="inline-flex items-center rounded-md bg-amber-50 border border-amber-200 px-1.5 py-0.5 text-[10px] font-medium text-amber-800">
+                {rips[0].tier_cases}CS
+              </span>
+              <div className="text-[10px] text-zinc-400 mt-0.5">
+                min {rips[0].tier_cases} case{rips[0].tier_cases !== 1 ? "s" : ""}
+              </div>
+              {hasMultipleRips && (
+                <div className="text-[10px] text-zinc-400 mt-0.5">{rips.length} tiers</div>
               )}
             </div>
           ) : (
