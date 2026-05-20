@@ -301,6 +301,7 @@ def parse_main_catalog(pages, source):
     rows = []
     current_brand = [None, None, None]   # one per lane
     current_sub = [None, None, None]     # sub-variant line per lane
+    last_sub = [None, None, None]        # carry-forward for size variants
     current_divisions = [None, None, None]  # division codes per lane
     # row index in `rows` of the most recent product per lane
     last_product_idx = [None, None, None]
@@ -328,12 +329,21 @@ def parse_main_catalog(pages, source):
 
                 if is_product_code(first_text):
                     vals = assemble_row_values(lane_words, lane)
+                    # Use current_sub if set; otherwise carry forward last_sub
+                    # (multiple sizes of same product share the sub-brand).
+                    # If neither exists, use cleaned brand header as description.
+                    effective_sub = current_sub[lane] or last_sub[lane]
+                    if current_sub[lane]:
+                        last_sub[lane] = current_sub[lane]
+                    if not effective_sub and current_brand[lane]:
+                        # Use brand header stripped of division codes as description
+                        effective_sub = _TERRITORY_PAREN_RE.sub("", current_brand[lane]).strip()
                     rows.append({
                         "source": source,
                         "section": "MainCatalog",
                         "category": category,
                         "brand_header": current_brand[lane],
-                        "sub_brand": current_sub[lane],
+                        "sub_brand": effective_sub,
                         "divisions": current_divisions[lane],
                         "code": vals.get("code"),
                         "size": vals.get("size"),
@@ -352,6 +362,8 @@ def parse_main_catalog(pages, source):
                         "lane": lane + 1,
                     })
                     last_product_idx[lane] = len(rows) - 1
+                    # Don't clear current_sub — it stays for subsequent size variants
+                    # until a new sub-variant or brand line replaces it
                     continue
 
                 text = " ".join(w["text"] for w in lane_words).strip()
@@ -388,6 +400,7 @@ def parse_main_catalog(pages, source):
                 if _is_brand_header(text):
                     current_brand[lane] = text
                     current_sub[lane] = None
+                    last_sub[lane] = None  # Reset carry-forward on new brand
                 else:
                     current_sub[lane] = text
     return rows

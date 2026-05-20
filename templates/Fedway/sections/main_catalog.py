@@ -382,13 +382,16 @@ def _classify_line(text: str) -> str:
         attr_count = sum(1 for w in words if w in _ATTRIB_TOKENS)
         non_attr = [w for w in words if w not in _ATTRIB_TOKENS]
 
-        # Has attribute tokens (F, LA, GP, JNC, SC) → brand
+        # Has attribute tokens (F, LA, GP, JNC, SC) → definite brand
         if non_attr and attr_count > 0:
             return "brand"
 
-        # Short, all-uppercase text with no size/proof keywords → likely brand
-        # Brands: "STARWARD", "UNCLE NEAREST", "GREY GOOSE"
-        # Descriptions: "NOVA SINGLE MALT WHISKY", "SOLELY MATURED IN..."
+        # Short, all-uppercase text with no size/proof keywords → maybe brand
+        # Real brands usually have attribute tokens (F, LA, GP, JNC, SC).
+        # Lines without attributes that look like brands ("NOVA SINGLE MALT WHISKY",
+        # "CASK WHISKEY", "TOASTED CARAMEL WHISKEY") are almost always sub-brand
+        # descriptions in Fedway's layout. Return "maybe_brand" so the lane parser
+        # can decide based on context (whether a brand is already set).
         if (
             stripped.isupper()
             and len(words) <= 4
@@ -400,7 +403,7 @@ def _classify_line(text: str) -> str:
             and stripped.upper() not in _SUBCATEGORY_WORDS
             and not all(w.upper() in _MODIFIER_WORDS for w in words)
         ):
-            return "brand"
+            return "maybe_brand"
 
         # Pure text line — description
         return "description"
@@ -599,6 +602,29 @@ def _group_words_into_lanes(words: list[dict], lanes: list[tuple]) -> list[list[
     return lane_words
 
 
+_DESPACED_RE = re.compile(r"(?<!\S)((?:[A-Za-z0-9$./\\] ){3,}[A-Za-z0-9$./\\])(?!\S)")
+
+
+_OCR_WORD_SPLITS = re.compile(
+    r"\b(BOT)\s+(TLE)"          # BOTTLE → BOT TLE
+    r"|(CAS)\s+(ES?)"           # CASE/CASES → CAS E/CAS ES
+    r"|(SLEEV)\s+(ES?)"         # SLEEVE → SLEEV E
+    r"|(DIS)\s*(TIL)\s*(LE)"    # DISTILLE → DIS TIL LE
+    r"|(WHISK)\s*(EY)"          # WHISKEY → WHISK EY
+    , re.IGNORECASE
+)
+
+
+def _despace_ocr(text: str) -> str:
+    """Collapse spaced-out OCR text: 'C A S E' → 'CASE', '$ 1 .5 0' → '$1.50'."""
+    def _collapse(m: re.Match) -> str:
+        return m.group(0).replace(" ", "")
+    text = _DESPACED_RE.sub(_collapse, text)
+    # Also fix common OCR word splits
+    text = _OCR_WORD_SPLITS.sub(_collapse, text)
+    return text
+
+
 def _reconstruct_lines(words: list[dict], y_tolerance: float = 4.0) -> list[tuple[float, str]]:
     """Reconstruct text lines from word positions within a lane.
 
@@ -617,6 +643,8 @@ def _reconstruct_lines(words: list[dict], y_tolerance: float = 4.0) -> list[tupl
     for y_key in sorted(rows.keys()):
         row_words = sorted(rows[y_key], key=lambda w: w["x0"])
         text = " ".join(w["text"] for w in row_words)
+        # Fix spaced-out OCR artifacts
+        text = _despace_ocr(text)
         y_pos = min(w["top"] for w in row_words)
         lines.append((y_pos, text))
 
@@ -637,15 +665,23 @@ def _parse_lane(
     current_region = None
     current_brand = None
     current_description = None
+    last_description = None  # Carries forward for size-variant items with no own description
     current_item = None
     current_rips = []
     current_prices = []
     saw_price_after_item = False  # Track if we've seen prices for the current item
 
     def _flush():
-        nonlocal current_item, current_description, current_rips, current_prices
+        nonlocal current_item, current_description, last_description, current_rips, current_prices
         if current_item is None:
             return
+
+        # If no description was set for this item, inherit the last one
+        # (Fedway often lists multiple sizes under one description)
+        if not current_description and last_description:
+            current_description = last_description
+        if current_description:
+            last_description = current_description
 
         # Compute best RIP save
         best_save = None
@@ -761,8 +797,18 @@ def _parse_lane(
             continue
 
         elif line_type == "header":
-            _flush()
             upper = text.strip().upper()
+            # If we already have a brand but no item yet, a category word
+            # (like "VODKA" after "GILBEY'S F LA GP JNC") is a sub-brand
+            # description, not a new section header.
+            if current_brand and current_item is None and upper in _CATEGORY_WORDS:
+                if current_description:
+                    current_description += " " + text.strip()
+                else:
+                    current_description = text.strip()
+                continue
+            _flush()
+            last_description = None
             if upper in _CATEGORY_WORDS:
                 current_category = upper
                 current_country = None
@@ -791,6 +837,33 @@ def _parse_lane(
             _flush()
             current_brand = _extract_brand(text)
             current_description = None
+            last_description = None
+
+        elif line_type == "maybe_brand":
+            # Short uppercase text without attribute tokens.
+            # If we already have a brand, this is a sub-brand description.
+            # If no brand yet, treat as a brand.
+            if current_brand is not None:
+                # Treat as description
+                if saw_price_after_item:
+                    _flush()
+                    saw_price_after_item = False
+                    current_description = text.strip()
+                elif current_item is not None:
+                    if current_description:
+                        current_description += " " + text.strip()
+                    else:
+                        current_description = text.strip()
+                else:
+                    if current_description:
+                        current_description += " " + text.strip()
+                    else:
+                        current_description = text.strip()
+            else:
+                _flush()
+                current_brand = _extract_brand(text)
+                current_description = None
+                last_description = None
 
         elif line_type == "item":
             _flush()
@@ -811,12 +884,20 @@ def _parse_lane(
                 saw_price_after_item = True
 
         elif line_type == "description":
-            if current_item is None or saw_price_after_item:
-                # Either before item code, or after pricing (next product's description).
-                # If after pricing, flush current item first.
-                if saw_price_after_item:
-                    _flush()
-                    saw_price_after_item = False
+            if saw_price_after_item:
+                # Description after pricing → this is the NEXT product's description.
+                # Flush the current product first.
+                _flush()
+                saw_price_after_item = False
+                current_description = text.strip()
+            elif current_item is not None:
+                # Description after item code but before pricing → belongs to current item
+                if current_description:
+                    current_description += " " + text.strip()
+                else:
+                    current_description = text.strip()
+            else:
+                # Description before item code (most common Fedway layout)
                 if current_description:
                     current_description += " " + text.strip()
                 else:
