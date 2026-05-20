@@ -121,63 +121,82 @@ def _normalise_desc(desc: str | None) -> str:
     return " ".join(desc.lower().split())
 
 
+def _normalise_size(size: str | None) -> str:
+    """Normalise size strings: '750ML' and '750 ML' -> '750ml'."""
+    if not size:
+        return ""
+    return size.lower().replace(" ", "")
+
+
+def _extract_key_words(desc: str) -> set[str]:
+    """Extract significant words (3+ chars) from a normalised description."""
+    return {w for w in desc.split() if len(w) >= 3}
+
+
 def _fuzzy_match(
     allied_products: list[dict],
     fedway_products: list[dict],
     threshold: float,
 ) -> list[dict]:
-    """Match products across distributors by brand_slug + size, then
-    fuzzy-match descriptions within each group.
+    """Match products across distributors by size, then fuzzy-match
+    descriptions within each size group.
+
+    Most Fedway products lack category_slug and brand_slug, so we group
+    by size only. Within each group we require >= 2 shared keywords (3+
+    chars) before doing the expensive SequenceMatcher comparison. This
+    keeps the search tractable even for large size groups.
 
     Returns a list of link dicts ready for the API.
     """
-    # Index by (brand_slug, size) -- both must be non-null to be candidates
-    allied_by_key: dict[tuple, list[dict]] = defaultdict(list)
+    # Index by normalised size (e.g. "750ml")
+    allied_by_size: dict[str, list[dict]] = defaultdict(list)
     for p in allied_products:
-        brand = p.get("brand_slug")
-        size = p.get("size")
-        if brand and size:
-            allied_by_key[(brand, size)].append(p)
+        ns = _normalise_size(p.get("size"))
+        desc = p.get("description") or ""
+        if ns and desc:
+            allied_by_size[ns].append(p)
 
-    fedway_by_key: dict[tuple, list[dict]] = defaultdict(list)
+    fedway_by_size: dict[str, list[dict]] = defaultdict(list)
     for p in fedway_products:
-        brand = p.get("brand_slug")
-        size = p.get("size")
-        if brand and size:
-            fedway_by_key[(brand, size)].append(p)
+        ns = _normalise_size(p.get("size"))
+        desc = p.get("description") or ""
+        if ns and desc:
+            fedway_by_size[ns].append(p)
 
-    # Find common keys
-    common_keys = set(allied_by_key.keys()) & set(fedway_by_key.keys())
+    common_sizes = set(allied_by_size.keys()) & set(fedway_by_size.keys())
     log.info(
-        "Brand+size groups: allied=%d, fedway=%d, shared=%d",
-        len(allied_by_key), len(fedway_by_key), len(common_keys),
+        "Size groups: allied=%d, fedway=%d, shared=%d",
+        len(allied_by_size), len(fedway_by_size), len(common_sizes),
     )
 
     links: list[dict] = []
-    # Track which products have already been matched (greedy 1:1)
     matched_allied: set[str] = set()
     matched_fedway: set[str] = set()
+    comparisons = 0
+    MIN_SHARED_KW = 2  # require at least 2 shared keywords
 
-    for key in sorted(common_keys):
-        a_list = allied_by_key[key]
-        f_list = fedway_by_key[key]
+    for size in sorted(common_sizes):
+        a_list = allied_by_size[size]
+        f_list = fedway_by_size[size]
 
-        # Build all pairwise scores
+        # Pre-compute normalised descriptions and keywords
+        a_normed = [(a, _normalise_desc(a.get("description")), _extract_key_words(_normalise_desc(a.get("description")))) for a in a_list]
+        f_normed = [(f, _normalise_desc(f.get("description")), _extract_key_words(_normalise_desc(f.get("description")))) for f in f_list]
+
+        # Build pairwise scores for pairs sharing >= MIN_SHARED_KW keywords
         pairs: list[tuple[float, dict, dict]] = []
-        for a in a_list:
-            a_desc = _normalise_desc(a.get("description"))
-            for f in f_list:
-                f_desc = _normalise_desc(f.get("description"))
-                if not a_desc or not f_desc:
+        for a, a_desc, a_kw in a_normed:
+            for f, f_desc, f_kw in f_normed:
+                if len(a_kw & f_kw) < MIN_SHARED_KW:
                     continue
+                comparisons += 1
                 ratio = SequenceMatcher(None, a_desc, f_desc).ratio()
-                pairs.append((ratio, a, f))
+                if ratio >= threshold:
+                    pairs.append((ratio, a, f))
 
         # Greedy best-first matching
         pairs.sort(key=lambda x: x[0], reverse=True)
         for ratio, a, f in pairs:
-            if ratio < threshold:
-                break
             a_code = a["code"]
             f_code = f["code"]
             if a_code in matched_allied or f_code in matched_fedway:
@@ -185,7 +204,6 @@ def _fuzzy_match(
             matched_allied.add(a_code)
             matched_fedway.add(f_code)
 
-            # Pick the longer description as canonical
             a_desc_raw = a.get("description") or ""
             f_desc_raw = f.get("description") or ""
             canonical = a_desc_raw if len(a_desc_raw) >= len(f_desc_raw) else f_desc_raw
@@ -201,6 +219,7 @@ def _fuzzy_match(
                 "category_slug": a.get("category_slug"),
             })
 
+    log.info("Total pairwise comparisons: %d", comparisons)
     return links
 
 

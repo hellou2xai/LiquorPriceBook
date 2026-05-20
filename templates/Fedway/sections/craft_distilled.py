@@ -12,6 +12,8 @@ from __future__ import annotations
 import re
 from decimal import Decimal, InvalidOperation
 
+from .main_catalog import _resolve_fedway_category
+
 _LINE_RE = re.compile(
     r"(.+?)\s*-\s*"                # description
     r"([\d.]+\s*(?:ML|LT|OZ|L))"  # size
@@ -90,7 +92,7 @@ def parse_craft_distilled(pages: list, source: str) -> list[dict]:
                 "code": code,
                 "sub_brand": description,
                 "brand_header": description.split()[0] if description else None,
-                "category": current_category or "CRAFT DISTILLED",
+                "category": _resolve_fedway_category(current_category or "CRAFT DISTILLED", None, None) or current_category or "Cordials",
                 "size": size,
                 "pack": pack,
                 "case_cost": case_cost,

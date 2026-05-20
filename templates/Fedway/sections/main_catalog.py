@@ -60,6 +60,11 @@ _CATEGORY_WORDS = {
     "BEER", "NON ALCOHOLIC", "MOCKTAILS", "MIXERS",
     "GLASSWARE", "CARBONATED", "OIL",
     "CANS AND COCKTAILS", "MALT PRODUCTS",
+    # Sake sub-categories (Fedway uses these as headers within sake)
+    "JUNMAI", "JUNMAI GINJO", "JUNMAI DAIGINJO", "DAIGINJO",
+    "GINJO", "NIGORI", "HONJOZO", "SHOCHU", "INFUSED SAKE",
+    "JUNMAI DAIGINGO", "DAIGINGO", "SPARKLING SAKE",
+    "GARNISHES", "VERMOUTH", "ASIAN SPIRITS", "GRAIN SPIRITS",
 }
 
 # Sub-category words
@@ -105,6 +110,198 @@ _COUNTRY_REGION_WORDS = {
     "BAROSSA VALLEY", "MCLAREN VALE", "MARGARET RIVER", "HUNTER VALLEY",
     "MARLBOROUGH", "HAWKES BAY", "CENTRAL OTAGO",
 }
+
+# --------------------------------------------------------------------------
+# Fedway → DB category mapping
+# --------------------------------------------------------------------------
+# Fedway in-page headers are broad terms. We need to map them to the DB
+# category display_names (which the CategoryResolver already recognises).
+# Some mappings depend on country context (e.g., "WHISKIES" + "SCOTLAND" = Scotch).
+
+_FEDWAY_CATEGORY_MAP: dict[str, str] = {
+    # Direct mappings (no country context needed)
+    "VODKA": "Vodka",
+    "GIN": "Gin",
+    "RUM": "Rum",
+    "TEQUILA": "Tequila",
+    "MEZCAL": "Mezcal",
+    "COGNAC": "Cognac",
+    "BOURBON": "Straight Whiskey, Bourbon & Moonshine",
+    "RYE": "Rye Whiskey",
+    "SCOTCH": "Scotch Whiskey",
+    "WHISKEY": "Blended Whiskey",
+    "LIQUEURS": "Cordials",
+    "LIQUEUR": "Cordials",
+    "CORDIALS": "Cordials",
+    "BITTERS": "Cordials",
+    "BRANDIES": "Brandy",
+    "BRANDY": "Brandy",
+    "CHAMPAGNE": "French Sparkling",
+    "PROSECCO": "Italian Sparkling",
+    "CAVA": "Spain Sparkling",
+    "SAKE": "Wines of Japan / Sake",
+    "READY TO DRINK": "Ready to Serve",
+    "READY TO SERVE": "Ready to Serve",
+    "CIDER": "Ready to Serve",
+    "MOCKTAILS": "Non-alcoholic Juices & Mixers",
+    "CARBONATED": "Non-alcoholic Juices & Mixers",
+    "MIXERS": "Non-alcoholic Juices & Mixers",
+    "GLASSWARE": "Glassware",
+    "SOJU": "Cordials",
+    "MALT": "Cans",
+    "MALT PRODUCTS": "Cans",
+    "NON ALCOHOLIC": "Non-alcoholic Juices & Mixers",
+    "CANS AND COCKTAILS": "Cans",
+    "OIL": "Non-alcoholic Juices & Mixers",
+    # Section-name labels that can also appear as categories
+    "MIXERS AND MORE": "Non-alcoholic Juices & Mixers",
+    "WINES": "Wines of France",
+    # Sake sub-categories
+    "JUNMAI": "Wines of Japan / Sake",
+    "JUNMAI GINJO": "Wines of Japan / Sake",
+    "JUNMAI DAIGINJO": "Wines of Japan / Sake",
+    "DAIGINJO": "Wines of Japan / Sake",
+    "GINJO": "Wines of Japan / Sake",
+    "NIGORI": "Wines of Japan / Sake",
+    "HONJOZO": "Wines of Japan / Sake",
+    "SHOCHU": "Wines of Japan / Sake",
+    "INFUSED SAKE": "Wines of Japan / Sake",
+    "WHISKY": "Blended Whiskey",
+    "CRAFT DISTILLED": "Cordials",
+    "GARNISHES": "Non-alcoholic Juices & Mixers",
+    "JUNMAI DAIGINGO": "Wines of Japan / Sake",
+    "DAIGINGO": "Wines of Japan / Sake",
+    "SPARKLING SAKE": "Wines of Japan / Sake",
+    "VERMOUTH": "Aperitifs",
+    "BEER": "Cans",
+    "JUICE/SYRUP": "Non-alcoholic Juices & Mixers",
+    "ASIAN SPIRITS": "Cordials",
+    "GRAIN SPIRITS": "Vodka",
+}
+
+# For "WHISKIES" header, the country determines the sub-category.
+_WHISKEY_COUNTRY_MAP: dict[str, str] = {
+    "SCOTLAND": "Scotch Whiskey",
+    "IRELAND": "Irish Whiskey",
+    "CANADA": "Canadian Whiskey",
+    "JAPAN": "Japanese Whiskey",
+    "TAIWAN": "Taiwanese Whisky",
+    "INDIA": "Indian Whiskey",
+    "CHINA": "Chinese Whiskey",
+    "USA": "Straight Whiskey, Bourbon & Moonshine",
+}
+
+# For "STILL" / "SPARKLING" / "FORTIFIED" wine headers, country → category.
+_WINE_COUNTRY_MAP: dict[str, str] = {
+    "CALIFORNIA": "Wines of California",
+    "OREGON": "Wines of Oregon",
+    "WASHINGTON": "Wines of California",
+    "NEW YORK": "Wines of New York State",
+    "NEW JERSEY": "Wines of New Jersey",
+    "FRANCE": "Wines of France",
+    "ITALY": "Wines of Italy",
+    "SPAIN": "Wines of Spain",
+    "PORTUGAL": "Wines of Portugal - Table Wines",
+    "GERMANY": "Wines of France",
+    "AUSTRIA": "Wines of Austria",
+    "AUSTRALIA": "Wines of Australia",
+    "NEW ZEALAND": "Wines of Australia",
+    "SOUTH AFRICA": "Wines of South Africa",
+    "CHILE": "Wines of Chile",
+    "ARGENTINA": "Wines of Argentina",
+    "GEORGIA": "Wines of Georgia",
+    "LEBANON": "Wines of Lebanon",
+    "JAPAN": "Wines of Japan / Sake",
+}
+
+# Sub-regions → country for wine category resolution
+_REGION_TO_COUNTRY: dict[str, str] = {
+    "NAPA VALLEY": "CALIFORNIA", "SONOMA": "CALIFORNIA",
+    "RUSSIAN RIVER VALLEY": "CALIFORNIA", "PASO ROBLES": "CALIFORNIA",
+    "NORTH COAST": "CALIFORNIA", "CENTRAL COAST": "CALIFORNIA",
+    "SANTA BARBARA": "CALIFORNIA",
+    "WILLAMETTE VALLEY": "OREGON", "COLUMBIA VALLEY": "WASHINGTON",
+    "WALLA WALLA": "WASHINGTON",
+    "FINGER LAKES": "NEW YORK", "LONG ISLAND": "NEW YORK",
+    "BORDEAUX": "FRANCE", "BURGUNDY": "FRANCE", "RHONE": "FRANCE",
+    "LOIRE": "FRANCE", "ALSACE": "FRANCE", "LANGUEDOC": "FRANCE",
+    "PROVENCE": "FRANCE", "SOUTH OF FRANCE": "FRANCE",
+    "TUSCANY": "ITALY", "PIEDMONT": "ITALY", "VENETO": "ITALY",
+    "SICILY": "ITALY", "PUGLIA": "ITALY", "ABRUZZO": "ITALY",
+    "FRIULI": "ITALY", "SARDINIA": "ITALY", "UMBRIA": "ITALY",
+    "CAMPANIA": "ITALY", "EMILIA ROMAGNA": "ITALY",
+    "RIOJA": "SPAIN", "RIBERA DEL DUERO": "SPAIN",
+    "GALICIA": "SPAIN", "PRIORAT": "SPAIN",
+    "MENDOZA": "ARGENTINA", "MAIPO VALLEY": "CHILE",
+    "COLCHAGUA": "CHILE", "CASABLANCA": "CHILE",
+    "STELLENBOSCH": "SOUTH AFRICA", "SWARTLAND": "SOUTH AFRICA",
+    "BAROSSA VALLEY": "AUSTRALIA", "MCLAREN VALE": "AUSTRALIA",
+    "MARGARET RIVER": "AUSTRALIA", "HUNTER VALLEY": "AUSTRALIA",
+    "MARLBOROUGH": "NEW ZEALAND", "HAWKES BAY": "NEW ZEALAND",
+    "CENTRAL OTAGO": "NEW ZEALAND",
+}
+
+
+def _resolve_fedway_category(
+    header_category: str | None,
+    country: str | None,
+    region: str | None,
+) -> str | None:
+    """Map a Fedway in-page category header + country/region context to
+    a DB-compatible category name.
+    """
+    if not header_category:
+        return None
+
+    upper = header_category.upper()
+
+    # Direct mapping
+    if upper in _FEDWAY_CATEGORY_MAP:
+        return _FEDWAY_CATEGORY_MAP[upper]
+
+    # "WHISKIES" → depends on country
+    if upper == "WHISKIES":
+        effective_country = country
+        if not effective_country and region:
+            effective_country = _REGION_TO_COUNTRY.get(region)
+        if effective_country and effective_country in _WHISKEY_COUNTRY_MAP:
+            return _WHISKEY_COUNTRY_MAP[effective_country]
+        return "Blended Whiskey"  # fallback
+
+    # Wine-related: "STILL", "SPARKLING", "FORTIFIED", "WINE", "WINES"
+    if upper in ("STILL", "SPARKLING", "FORTIFIED", "WINE", "WINES"):
+        # Resolve region → country if needed
+        effective_country = country
+        if not effective_country and region:
+            effective_country = _REGION_TO_COUNTRY.get(region)
+
+        if upper == "SPARKLING" and effective_country:
+            sparkling_map = {
+                "FRANCE": "French Sparkling",
+                "ITALY": "Italian Sparkling",
+                "SPAIN": "Spain Sparkling",
+                "USA": "American Sparkling",
+                "CALIFORNIA": "American Sparkling",
+                "AUSTRIA": "Austria Sparkling",
+                "ENGLAND": "English Sparkling",
+                "AUSTRALIA": "Wines of Australia",
+                "ARGENTINA": "Argentina Sparkling",
+                "CHILE": "Chile Sparkling",
+            }
+            return sparkling_map.get(effective_country, "French Sparkling")
+
+        if effective_country and effective_country in _WINE_COUNTRY_MAP:
+            return _WINE_COUNTRY_MAP[effective_country]
+
+        # No country context — generic
+        return "Wines of France"  # fallback for unresolvable wines
+
+    # "SPIRITS" — generic, no specific sub-category
+    if upper == "SPIRITS":
+        return "Cordials"  # best generic spirits fallback
+
+    return header_category  # passthrough (let CategoryResolver try)
+
 
 # Words that are brand-name modifiers, NOT standalone brands
 _MODIFIER_WORDS = {
@@ -427,7 +624,7 @@ def _parse_lane(
 ) -> list[dict]:
     """Parse one column lane's lines into product rows."""
     products = []
-    current_category = section_name  # "SPIRITS", "WINE", etc.
+    current_category = _resolve_fedway_category(section_name, None, None) or section_name
     current_country = None
     current_region = None
     current_brand = None
@@ -510,12 +707,17 @@ def _parse_lane(
                     "rip_btl_price": best_btl_cost - save_per_btl if best_btl_cost else None,
                 })
 
+        # Resolve the category using Fedway→DB mapping
+        resolved_cat = _resolve_fedway_category(
+            current_category, current_country, current_region,
+        )
+
         row = {
             "code": current_item["code"],
             # Pipeline uses sub_brand for the product description
             "sub_brand": description,
             "brand_header": current_brand,
-            "category": current_category,
+            "category": resolved_cat or current_category,
             "country": current_country,
             "region": current_region,
             "size": current_item.get("size"),
