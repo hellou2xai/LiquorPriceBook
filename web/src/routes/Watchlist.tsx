@@ -254,8 +254,8 @@ export default function Watchlist() {
   }, [search]);
 
   const q = useQuery({
-    queryKey: ["watchlist-order", { search: debouncedSearch, category: categoryFilter, sort }],
-    queryFn: () => watchlistApi.order({ search: debouncedSearch || undefined, category: categoryFilter || undefined, sort: sort === "name" ? undefined : sort }),
+    queryKey: ["watchlist-order", { search: debouncedSearch, category: categoryFilter }],
+    queryFn: () => watchlistApi.order({ search: debouncedSearch || undefined, category: categoryFilter || undefined }),
     placeholderData: (prev) => prev,
   });
 
@@ -263,9 +263,11 @@ export default function Watchlist() {
 
   const categories = useMemo(() => {
     if (!q.data) return [];
-    const set = new Set<string>();
-    for (const item of q.data) if (item.category_display) set.add(item.category_display);
-    return [...set].sort();
+    const map = new Map<string, string>();
+    for (const item of q.data) {
+      if (item.category_slug && item.category_display) map.set(item.category_slug, item.category_display);
+    }
+    return [...map.entries()].sort(([, a], [, b]) => a.localeCompare(b));
   }, [q.data]);
 
   function getQty(code: string): CartQty { return cart.get(code) ?? { bottles: 0, cases: 0 }; }
@@ -602,7 +604,7 @@ export default function Watchlist() {
           className="flex-1 rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm focus:border-zinc-900 focus:outline-none" />
         <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} className="rounded-md border border-zinc-300 bg-white px-2.5 py-2 text-sm">
           <option value="">All categories</option>
-          {categories.map((c) => (<option key={c} value={c}>{c}</option>))}
+          {categories.map(([slug, display]) => (<option key={slug} value={slug}>{display}</option>))}
         </select>
         <select value={sort} onChange={(e) => setSort(e.target.value as SortKey)} className="rounded-md border border-zinc-300 bg-white px-2.5 py-2 text-sm">
           <option value="buy_signal">Buy Signal</option>
