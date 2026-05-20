@@ -17,11 +17,9 @@ Views:
 
 from __future__ import annotations
 
-from decimal import Decimal
-
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import and_, asc, desc, func, select
+from sqlalchemy import and_, asc, case, desc, func, select
 from sqlalchemy.orm import Session
 
 from lpb_core.db import get_session
@@ -424,7 +422,7 @@ def _closeout_rip(session, current, _previous, limit, user):
             Category.display_name.label("category"),
             Brand.display_name.label("brand"),
             func.max(RipOffer.save_amount).label("best_save"),
-            InventoryReduction.reduced_case.label("closeout_case"),
+            InventoryReduction.best_case.label("closeout_case"),
             InventoryReduction.original_case.label("original_case"),
         )
         .select_from(InventoryReduction)
@@ -441,7 +439,7 @@ def _closeout_rip(session, current, _previous, limit, user):
             Product.code, ProductEdition.description, ProductEdition.size,
             ProductEdition.case_cost, ProductEdition.divisions,
             Category.display_name, Brand.display_name,
-            InventoryReduction.reduced_case, InventoryReduction.original_case,
+            InventoryReduction.best_case, InventoryReduction.original_case,
         )
         .order_by(desc(func.max(RipOffer.save_amount)))
         .limit(limit)
@@ -488,12 +486,14 @@ def _category_trends(session, current, previous, limit, user):
             func.avg(ProductEdition.case_cost).label("avg_cur"),
             func.avg(PrevPE.case_cost).label("avg_prev"),
             func.avg(ProductEdition.case_cost - PrevPE.case_cost).label("avg_change"),
-            func.sum(
-                func.cast(ProductEdition.case_cost < PrevPE.case_cost, Decimal)
-            ).label("drops"),
-            func.sum(
-                func.cast(ProductEdition.case_cost > PrevPE.case_cost, Decimal)
-            ).label("increases"),
+            func.sum(case(
+                (ProductEdition.case_cost < PrevPE.case_cost, 1),
+                else_=0,
+            )).label("drops"),
+            func.sum(case(
+                (ProductEdition.case_cost > PrevPE.case_cost, 1),
+                else_=0,
+            )).label("increases"),
         )
         .select_from(ProductEdition)
         .join(PrevPE, and_(
