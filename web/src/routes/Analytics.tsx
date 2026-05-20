@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { analyticsApi, type AnalyticsView, type AnalyticsRow, type CategoryTrendRow } from "../lib/api";
@@ -281,12 +281,25 @@ const categoryColumns: Column<CategoryTrendRow>[] = [
   },
 ];
 
+// Views where % change filter makes sense
+const PCT_VIEWS = new Set<AnalyticsView>([
+  "price_drops", "price_increases", "watchlist_movers",
+  "best_value",
+]);
+
 export default function Analytics() {
   const [activeView, setActiveView] = useState<AnalyticsView | null>(null);
 
+  // Filters (reset when view changes)
+  const [search, setSearch] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("");
+  const [brandFilter, setBrandFilter] = useState("");
+  const [divisionFilter, setDivisionFilter] = useState("");
+  const [minPct, setMinPct] = useState(0);
+
   const { data, isLoading, error } = useQuery({
     queryKey: ["analytics", activeView],
-    queryFn: () => analyticsApi.query(activeView!, 200),
+    queryFn: () => analyticsApi.query(activeView!, 500),
     enabled: activeView !== null,
   });
 
@@ -295,8 +308,116 @@ export default function Analytics() {
 
   const isCategoryView = activeView === "category_trends";
 
+  // Extract unique filter values from product rows
+  const facets = useMemo(() => {
+    const rows = data?.rows ?? [];
+    const cats = new Set<string>();
+    const brands = new Set<string>();
+    const divs = new Set<string>();
+    for (const r of rows) {
+      if (r.category) cats.add(r.category);
+      if (r.brand) brands.add(r.brand);
+      if (r.divisions) {
+        for (const d of r.divisions.split(/\s+/)) {
+          if (d.trim()) divs.add(d.trim());
+        }
+      }
+    }
+    return {
+      categories: [...cats].sort(),
+      brands: [...brands].sort(),
+      divisions: [...divs].sort(),
+    };
+  }, [data?.rows]);
+
+  // Filtered product rows
+  const filteredRows = useMemo(() => {
+    let rows = data?.rows ?? [];
+    if (search) {
+      const q = search.toLowerCase();
+      rows = rows.filter(
+        (r) =>
+          r.code.toLowerCase().includes(q) ||
+          (r.description ?? "").toLowerCase().includes(q) ||
+          (r.brand ?? "").toLowerCase().includes(q),
+      );
+    }
+    if (categoryFilter) {
+      rows = rows.filter((r) => r.category === categoryFilter);
+    }
+    if (brandFilter) {
+      rows = rows.filter((r) => r.brand === brandFilter);
+    }
+    if (divisionFilter) {
+      rows = rows.filter(
+        (r) => r.divisions && r.divisions.includes(divisionFilter),
+      );
+    }
+    if (minPct > 0) {
+      rows = rows.filter(
+        (r) => r.pct_change != null && Math.abs(r.pct_change) >= minPct,
+      );
+    }
+    return rows;
+  }, [data?.rows, search, categoryFilter, brandFilter, divisionFilter, minPct]);
+
+  // Filtered category rows (only search applies)
+  const filteredCatRows = useMemo(() => {
+    let rows = data?.category_rows ?? [];
+    if (search) {
+      const q = search.toLowerCase();
+      rows = rows.filter((r) => r.category.toLowerCase().includes(q));
+    }
+    if (minPct > 0) {
+      rows = rows.filter(
+        (r) => Math.abs(r.avg_pct_change) >= minPct,
+      );
+    }
+    return rows;
+  }, [data?.category_rows, search, minPct]);
+
+  // Summary stats for product views
+  const stats = useMemo(() => {
+    if (isCategoryView || filteredRows.length === 0) return null;
+    const withPct = filteredRows.filter((r) => r.pct_change != null);
+    const avgPct = withPct.length > 0
+      ? withPct.reduce((s, r) => s + (r.pct_change ?? 0), 0) / withPct.length
+      : null;
+    const withRip = filteredRows.filter((r) => r.rip_save != null);
+    const totalRipSave = withRip.reduce(
+      (s, r) => s + parseFloat(r.rip_save ?? "0"), 0,
+    );
+    return {
+      shown: filteredRows.length,
+      total: data?.total ?? 0,
+      avgPct,
+      ripCount: withRip.length,
+      totalRipSave,
+    };
+  }, [filteredRows, data?.total, isCategoryView]);
+
+  const handleViewClick = (view: AnalyticsView) => {
+    setActiveView(view);
+    // Reset filters on view change
+    setSearch("");
+    setCategoryFilter("");
+    setBrandFilter("");
+    setDivisionFilter("");
+    setMinPct(0);
+  };
+
+  const hasActiveFilters = search || categoryFilter || brandFilter || divisionFilter || minPct > 0;
+
+  const clearFilters = () => {
+    setSearch("");
+    setCategoryFilter("");
+    setBrandFilter("");
+    setDivisionFilter("");
+    setMinPct(0);
+  };
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
         <div>
           <h1 className="text-xl sm:text-2xl font-bold tracking-tight">Pricing Analytics</h1>
@@ -317,7 +438,7 @@ export default function Analytics() {
         {VIEWS.map((v) => (
           <button
             key={v.view}
-            onClick={() => setActiveView(v.view)}
+            onClick={() => handleViewClick(v.view)}
             className={`text-left p-3 rounded-lg border transition-all ${
               activeView === v.view
                 ? `${v.color} ring-2 ring-offset-1 ring-current`
@@ -337,55 +458,192 @@ export default function Analytics() {
 
       {/* Results */}
       {activeView && (
-        <div className="bg-white border border-zinc-200 rounded-lg overflow-hidden">
-          {isLoading && (
-            <div className="p-8 text-center text-zinc-400">Loading analysis...</div>
-          )}
-
-          {error && (
-            <div className="p-8 text-center text-red-500">
-              {error instanceof Error ? error.message : "Failed to load"}
+        <>
+          {/* Stats bar */}
+          {stats && (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="rounded-lg border border-zinc-200 bg-white px-3 py-2">
+                <div className="text-xs text-zinc-500">Results</div>
+                <div className="text-lg font-semibold text-zinc-900">
+                  {stats.shown}
+                  {stats.shown !== stats.total && (
+                    <span className="text-xs font-normal text-zinc-400"> / {stats.total}</span>
+                  )}
+                </div>
+              </div>
+              {stats.avgPct != null && (
+                <div className={`rounded-lg border px-3 py-2 ${
+                  stats.avgPct < 0
+                    ? "border-emerald-200 bg-emerald-50"
+                    : stats.avgPct > 0
+                      ? "border-red-200 bg-red-50"
+                      : "border-zinc-200 bg-white"
+                }`}>
+                  <div className={`text-xs ${
+                    stats.avgPct < 0 ? "text-emerald-600" : stats.avgPct > 0 ? "text-red-600" : "text-zinc-500"
+                  }`}>Avg Change</div>
+                  <div className={`text-lg font-semibold ${
+                    stats.avgPct < 0 ? "text-emerald-800" : stats.avgPct > 0 ? "text-red-800" : "text-zinc-900"
+                  }`}>
+                    {stats.avgPct > 0 ? "+" : ""}{stats.avgPct.toFixed(1)}%
+                  </div>
+                </div>
+              )}
+              {stats.ripCount > 0 && (
+                <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2">
+                  <div className="text-xs text-blue-600">With RIP</div>
+                  <div className="text-lg font-semibold text-blue-800">{stats.ripCount}</div>
+                </div>
+              )}
+              {stats.totalRipSave > 0 && (
+                <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2">
+                  <div className="text-xs text-emerald-600">Total RIP Savings</div>
+                  <div className="text-lg font-semibold text-emerald-800">
+                    ${stats.totalRipSave.toFixed(2)}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
+          {/* Filters bar */}
           {data && !isLoading && (
-            <>
-              <div className="px-4 py-3 border-b border-zinc-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
-                <h2 className="font-semibold text-sm">
-                  {VIEWS.find((v) => v.view === activeView)?.label}
-                  <span className="ml-2 text-zinc-400 font-normal">{data.total} results</span>
-                </h2>
-                <span className="text-xs text-zinc-400">
-                  {data.edition_current}
-                  {data.edition_previous ? ` vs ${data.edition_previous}` : ""}
-                </span>
-              </div>
+            <div className="flex flex-col sm:flex-row flex-wrap gap-3 items-start sm:items-center">
+              <input
+                type="text"
+                placeholder={isCategoryView ? "Search category..." : "Search SKU, description, brand..."}
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="w-full sm:w-64 rounded-md border border-zinc-300 bg-white px-3 py-1.5 text-sm placeholder:text-zinc-400 focus:border-zinc-900 focus:outline-none"
+              />
 
-              {isCategoryView && data.category_rows.length > 0 ? (
-                <SortableTable
-                  data={categorySort.sorted(data.category_rows, categoryColumns)}
-                  columns={categoryColumns}
-                  sort={categorySort.sort}
-                  onSort={categorySort.toggle}
-                  rowKey={(r) => r.category}
-                />
-              ) : !isCategoryView && data.rows.length > 0 ? (
-                <SortableTable
-                  data={productSort.sorted(data.rows, productColumns)}
-                  columns={productColumns}
-                  sort={productSort.sort}
-                  onSort={productSort.toggle}
-                  rowKey={(r) => r.code}
-                />
-              ) : (
-                <div className="p-8 text-center text-zinc-400 text-sm">
-                  No results for this analysis.
-                  {!data.edition_previous && " Only one edition available — comparison requires two editions."}
-                </div>
+              {!isCategoryView && facets.categories.length > 1 && (
+                <select
+                  value={categoryFilter}
+                  onChange={(e) => setCategoryFilter(e.target.value)}
+                  className="rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-sm"
+                >
+                  <option value="">All categories</option>
+                  {facets.categories.map((c) => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
               )}
-            </>
+
+              {!isCategoryView && facets.brands.length > 1 && (
+                <select
+                  value={brandFilter}
+                  onChange={(e) => setBrandFilter(e.target.value)}
+                  className="rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-sm"
+                >
+                  <option value="">All brands</option>
+                  {facets.brands.map((b) => (
+                    <option key={b} value={b}>{b}</option>
+                  ))}
+                </select>
+              )}
+
+              {!isCategoryView && facets.divisions.length > 1 && (
+                <select
+                  value={divisionFilter}
+                  onChange={(e) => setDivisionFilter(e.target.value)}
+                  className="rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-sm"
+                >
+                  <option value="">All divisions</option>
+                  {facets.divisions.map((d) => (
+                    <option key={d} value={d}>{d}</option>
+                  ))}
+                </select>
+              )}
+
+              {(isCategoryView || (activeView && PCT_VIEWS.has(activeView))) && (
+                <label className="text-sm text-zinc-700 flex items-center gap-2">
+                  Min %
+                  <input
+                    type="number"
+                    value={minPct}
+                    onChange={(e) => setMinPct(parseFloat(e.target.value) || 0)}
+                    min={0}
+                    max={100}
+                    step={1}
+                    className="w-16 rounded-md border border-zinc-300 bg-white px-2 py-1 text-sm"
+                  />
+                </label>
+              )}
+
+              {hasActiveFilters && (
+                <button
+                  onClick={clearFilters}
+                  className="text-xs text-zinc-500 hover:text-zinc-800 underline"
+                >
+                  Clear filters
+                </button>
+              )}
+            </div>
           )}
-        </div>
+
+          {/* Table */}
+          <div className="bg-white border border-zinc-200 rounded-lg overflow-hidden">
+            {isLoading && (
+              <div className="p-8 text-center text-zinc-400">Loading analysis...</div>
+            )}
+
+            {error && (
+              <div className="p-8 text-center text-red-500">
+                {error instanceof Error ? error.message : "Failed to load"}
+              </div>
+            )}
+
+            {data && !isLoading && (
+              <>
+                <div className="px-4 py-3 border-b border-zinc-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
+                  <h2 className="font-semibold text-sm">
+                    {VIEWS.find((v) => v.view === activeView)?.label}
+                    <span className="ml-2 text-zinc-400 font-normal">
+                      {isCategoryView ? filteredCatRows.length : filteredRows.length} results
+                      {hasActiveFilters && (
+                        <> (filtered from {data.total})</>
+                      )}
+                    </span>
+                  </h2>
+                  <span className="text-xs text-zinc-400">
+                    {data.edition_current}
+                    {data.edition_previous ? ` vs ${data.edition_previous}` : ""}
+                  </span>
+                </div>
+
+                {isCategoryView && filteredCatRows.length > 0 ? (
+                  <SortableTable
+                    data={categorySort.sorted(filteredCatRows, categoryColumns)}
+                    columns={categoryColumns}
+                    sort={categorySort.sort}
+                    onSort={categorySort.toggle}
+                    rowKey={(r) => r.category}
+                    emptyMessage="No categories match your filters."
+                  />
+                ) : !isCategoryView && filteredRows.length > 0 ? (
+                  <SortableTable
+                    data={productSort.sorted(filteredRows, productColumns)}
+                    columns={productColumns}
+                    sort={productSort.sort}
+                    onSort={productSort.toggle}
+                    rowKey={(r) => r.code}
+                    emptyMessage="No products match your filters."
+                  />
+                ) : (
+                  <div className="p-8 text-center text-zinc-400 text-sm">
+                    {hasActiveFilters
+                      ? "No results match your filters."
+                      : <>No results for this analysis.
+                          {!data.edition_previous && " Only one edition available — comparison requires two editions."}
+                        </>
+                    }
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </>
       )}
 
       {!activeView && (
