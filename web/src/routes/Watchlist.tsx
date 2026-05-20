@@ -566,7 +566,6 @@ export default function Watchlist() {
 
   function renderRow(item: OrderItem) {
     const qty = getQty(item.product_code);
-    const hasRipPrice = item.has_rip && item.effective_case;
     const rips = item.all_rips ?? [];
     const hasMultipleRips = rips.length > 1;
 
@@ -622,18 +621,14 @@ export default function Watchlist() {
           )}
         </td>
 
-        {/* After RIP Case */}
-        <td className={`px-2 py-2 text-right tabular-nums font-medium hidden sm:table-cell ${hasRipPrice ? "text-emerald-700" : ""}`}>
-          {money(item.effective_case ?? item.case_cost)}
+        {/* After RIP Case — only show when user has selected a RIP tier */}
+        <td className="px-2 py-2 text-right tabular-nums font-medium hidden sm:table-cell">
+          <span className="text-zinc-300 text-xs">{"\u2014"}</span>
         </td>
 
-        {/* GP% w/RIP */}
+        {/* GP% w/RIP — only show when user has selected a RIP tier */}
         <td className="px-2 py-2 text-right tabular-nums hidden md:table-cell">
-          {item.rip_discount_pct ? (
-            <span className="text-emerald-700 font-medium text-xs">{parseFloat(item.rip_discount_pct).toFixed(1)}%</span>
-          ) : (
-            <span className="text-zinc-300 text-xs">{"\u2014"}</span>
-          )}
+          <span className="text-zinc-300 text-xs">{"\u2014"}</span>
         </td>
 
         {/* Target */}
