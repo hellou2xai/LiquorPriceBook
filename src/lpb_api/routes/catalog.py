@@ -307,7 +307,8 @@ def list_brands(
         .limit(limit)
     )
     if q:
-        stmt = stmt.where(Brand.display_name.ilike(f"%{q}%"))
+        for word in q.split():
+            stmt = stmt.where(Brand.display_name.ilike(f"%{word}%"))
     rows = session.execute(stmt).all()
     return [
         BrandOut(
@@ -438,14 +439,20 @@ def list_products(
             )
         base = base.where(or_(*div_conditions))
     if search:
-        pat = f"%{search}%"
-        base = base.where(
-            or_(
-                Product.code.ilike(pat),
-                ProductEdition.description.ilike(pat),
-                Brand.display_name.ilike(pat),
+        # Split search into words; each word must appear in code, description,
+        # or brand.  "grey goose 750" matches brand=GREY GOOSE + size/desc=750.
+        words = search.split()
+        for word in words:
+            pat = f"%{word}%"
+            base = base.where(
+                or_(
+                    Product.code.ilike(pat),
+                    ProductEdition.description.ilike(pat),
+                    Brand.display_name.ilike(pat),
+                    Category.display_name.ilike(pat),
+                    ProductEdition.size.ilike(pat),
+                )
             )
-        )
     if has_rip is True:
         base = base.where(top_rip_save.c.max_save.isnot(None))
     elif has_rip is False:

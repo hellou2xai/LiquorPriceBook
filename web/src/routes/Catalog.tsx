@@ -102,8 +102,11 @@ function SearchableCheckList({
 
   const filtered = useMemo(() => {
     if (!search) return items;
-    const q = search.toLowerCase();
-    return items.filter((i) => i.label.toLowerCase().includes(q));
+    const words = search.toLowerCase().split(/\s+/).filter(Boolean);
+    return items.filter((i) => {
+      const label = i.label.toLowerCase();
+      return words.every((w) => label.includes(w));
+    });
   }, [items, search]);
 
   const visible = showAll ? filtered : filtered.slice(0, maxVisible);
@@ -375,7 +378,7 @@ function BrandsFilter({
   const [debouncedBrandSearch, setDebouncedBrandSearch] = useState("");
 
   useMemo(() => {
-    const t = setTimeout(() => setDebouncedBrandSearch(brandSearch), 300);
+    const t = setTimeout(() => setDebouncedBrandSearch(brandSearch), 200);
     return () => clearTimeout(t);
   }, [brandSearch]);
 
@@ -460,7 +463,7 @@ export default function Catalog() {
 
   // Debounce search
   useMemo(() => {
-    const t = setTimeout(() => setDebouncedSearch(filters.search), 250);
+    const t = setTimeout(() => setDebouncedSearch(filters.search), 150);
     return () => clearTimeout(t);
   }, [filters.search]);
 
@@ -564,7 +567,7 @@ export default function Catalog() {
       <div className="flex gap-2 items-center">
         <input
           type="text"
-          placeholder="Search code, description, brand..."
+          placeholder="Search brand, product, category, size, code..."
           value={filters.search}
           onChange={(e) => setFilters({ ...filters, search: e.target.value })}
           className="flex-1 rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm focus:border-brand-orange focus:outline-none"
@@ -623,14 +626,14 @@ export default function Catalog() {
                   <tr>
                     <th className="px-3 py-2 w-8" />
                     <th className="px-3 py-2">Code</th>
+                    <th className="px-3 py-2 hidden md:table-cell">Brand</th>
                     <th
                       className={`px-3 py-2 cursor-pointer select-none hover:text-zinc-700 ${filters.sort === "name" ? "text-zinc-900" : ""}`}
                       onClick={() => updateFilters({ ...filters, sort: "name" })}
                     >
-                      Description {filters.sort === "name" && <span className="text-[10px]">▲</span>}
+                      Product {filters.sort === "name" && <span className="text-[10px]">▲</span>}
                     </th>
                     <th className="px-3 py-2 hidden lg:table-cell">Distributor</th>
-                    <th className="px-3 py-2 hidden md:table-cell">Brand</th>
                     <th className="px-3 py-2 hidden sm:table-cell">Size</th>
                     <th
                       className={`px-3 py-2 text-right cursor-pointer select-none hover:text-zinc-700 ${filters.sort.startsWith("case_cost") ? "text-zinc-900" : ""}`}
@@ -675,8 +678,12 @@ export default function Catalog() {
                             {p.code}
                           </Link>
                         </td>
+                        <td className="px-3 py-2 hidden md:table-cell">
+                          <span className="text-xs font-semibold text-zinc-800">{p.brand_slug?.replace(/-/g, " ").toUpperCase() ?? "\u2014"}</span>
+                        </td>
                         <td className="px-3 py-2">
                           <Link to={`/catalog/${p.code}${p.distributor_slug ? `?d=${p.distributor_slug}` : ""}`} className="hover:underline">
+                            <span className="md:hidden text-xs font-semibold text-zinc-800 mr-1">{p.brand_slug?.replace(/-/g, " ").toUpperCase()}</span>
                             {p.description ?? "\u2014"}
                           </Link>
                           {p.divisions && (
@@ -694,7 +701,6 @@ export default function Catalog() {
                             {p.distributor_name ?? p.distributor_slug ?? "\u2014"}
                           </span>
                         </td>
-                        <td className="px-3 py-2 text-zinc-600 text-xs hidden md:table-cell">{p.brand_slug ?? "\u2014"}</td>
                         <td className="px-3 py-2 text-zinc-600 hidden sm:table-cell">{p.size ?? "\u2014"}</td>
                         <td className="px-3 py-2 text-right tabular-nums">
                           {money(p.case_cost)}
