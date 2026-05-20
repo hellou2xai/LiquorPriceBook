@@ -6,6 +6,11 @@ import { specialsApi } from "../lib/api";
 import type { WebSpecial } from "../lib/api";
 import { money } from "../lib/fmt";
 
+function fmtDate(d: string): string {
+  const dt = new Date(d + "T00:00:00");
+  return dt.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
 function daysLabel(d: number): string {
   if (d === 0) return "Ends today";
   if (d === 1) return "1 day left";
@@ -30,16 +35,9 @@ function CountdownBadge({ days }: { days: number }) {
 }
 
 function DateRange({ start, end }: { start: string; end: string }) {
-  const fmt = (d: string) => {
-    const dt = new Date(d + "T00:00:00");
-    return dt.toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-    });
-  };
   return (
     <span className="text-xs text-zinc-500">
-      {fmt(start)} &ndash; {fmt(end)}
+      {fmtDate(start)} &ndash; {fmtDate(end)}
     </span>
   );
 }
@@ -185,6 +183,7 @@ export default function Specials() {
                     <tr>
                       <th className="px-4 py-1.5">Type</th>
                       <th className="px-4 py-1.5">Description</th>
+                      <th className="px-4 py-1.5">Valid Dates</th>
                       <th className="px-4 py-1.5">Size</th>
                       <th className="px-4 py-1.5">Product</th>
                       <th className="px-4 py-1.5 text-right">
@@ -247,6 +246,14 @@ function SpecialRow({ special: s }: { special: WebSpecial }) {
       </td>
       <td className="px-4 py-2 font-medium text-zinc-900">
         {s.description}
+      </td>
+      <td className="px-4 py-2">
+        <div className="flex flex-col gap-0.5">
+          <span className="text-xs text-zinc-700 font-medium whitespace-nowrap">
+            {fmtDate(s.start_date)} &ndash; {fmtDate(s.end_date)}
+          </span>
+          <CountdownBadge days={s.days_remaining} />
+        </div>
       </td>
       <td className="px-4 py-2 text-zinc-500">{s.size ?? "\u2014"}</td>
       <td className="px-4 py-2">
