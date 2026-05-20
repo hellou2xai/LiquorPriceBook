@@ -22,6 +22,7 @@ import re
 import sys
 import time
 from datetime import date, datetime
+from decimal import Decimal
 from pathlib import Path
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
@@ -32,6 +33,8 @@ class _DateEncoder(json.JSONEncoder):
     def default(self, o):
         if isinstance(o, (date, datetime)):
             return o.isoformat()
+        if isinstance(o, Decimal):
+            return float(o)
         return super().default(o)
 
 # Add project root to path so templates import works
@@ -46,6 +49,16 @@ logging.basicConfig(
 log = logging.getLogger("local_ingest")
 
 _YEAR_MONTH_RE = re.compile(r"(\d{4})[-/_](\d{2})")
+_MONTH_NAMES = {
+    "january": 1, "february": 2, "march": 3, "april": 4,
+    "may": 5, "june": 6, "july": 7, "august": 8,
+    "september": 9, "october": 10, "november": 11, "december": 12,
+}
+_MONTH_NAME_RE = re.compile(
+    r"(january|february|march|april|may|june|july|august|september|october|november|december)"
+    r"[+\s_-]*(\d{4})",
+    re.IGNORECASE,
+)
 
 
 def _parse_year_month(
@@ -56,6 +69,9 @@ def _parse_year_month(
     m = _YEAR_MONTH_RE.search(filename)
     if m:
         return int(m.group(1)), int(m.group(2))
+    m = _MONTH_NAME_RE.search(filename)
+    if m:
+        return int(m.group(2)), _MONTH_NAMES[m.group(1).lower()]
     print(
         "ERROR: Could not infer year/month from filename. "
         "Either name the file like '2026-05 Price Book.pdf' or pass --year and --month.",
