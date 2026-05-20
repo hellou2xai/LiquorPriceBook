@@ -11,11 +11,10 @@ from __future__ import annotations
 
 import calendar
 from decimal import Decimal
-from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
-from sqlalchemy import and_, asc, func, select
+from sqlalchemy import asc, func, select
 from sqlalchemy.orm import Session
 
 from lpb_core.db import get_session
