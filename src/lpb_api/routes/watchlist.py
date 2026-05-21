@@ -362,7 +362,8 @@ def watchlist_order(
     all_editions = session.execute(
         select(BookEdition.id, Distributor.slug)
         .join(Distributor, Distributor.id == BookEdition.distributor_id)
-        .order_by(Distributor.slug, desc(BookEdition.year), desc(BookEdition.month))
+        .order_by(Distributor.slug, desc(BookEdition.year), desc(BookEdition.month),
+                  desc(BookEdition.created_at))
     ).all()
     # Find second-most-recent edition per distributor
     prev_edition_ids: list = []

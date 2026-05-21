@@ -263,7 +263,8 @@ def _current_edition_ids(
             select(BookEdition.id, Distributor.slug)
             .join(Distributor, Distributor.id == BookEdition.distributor_id)
             .where(future_filter)
-            .order_by(desc(BookEdition.year), desc(BookEdition.month))
+            .order_by(desc(BookEdition.year), desc(BookEdition.month),
+                      desc(BookEdition.created_at))
         ).all()
         seen: dict[str, UUID] = {}
         for eid, dslug in rows:
@@ -371,7 +372,8 @@ def list_products(
         all_editions = session.execute(
             select(BookEdition.id, Distributor.slug, Distributor.name)
             .join(Distributor, Distributor.id == BookEdition.distributor_id)
-            .order_by(desc(BookEdition.year), desc(BookEdition.month))
+            .order_by(desc(BookEdition.year), desc(BookEdition.month),
+                      desc(BookEdition.created_at))
         ).all()
         # Pick latest edition per distributor
         seen: dict[str, tuple] = {}
