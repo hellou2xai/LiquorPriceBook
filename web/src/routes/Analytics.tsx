@@ -10,6 +10,7 @@ import SortableTable, { useSort, type Column } from "../components/SortableTable
 import FavoriteButton from "../components/FavoriteButton";
 import ProductContextMenu, { useContextMenu } from "../components/ProductContextMenu";
 import TrackedOnlyToggle from "../components/TrackedOnlyToggle";
+import { shortDist } from "../lib/fmt";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
   PieChart, Pie, Legend,
@@ -105,7 +106,7 @@ function makeProductColumns(
             ? "bg-blue-50 text-blue-700 border border-blue-200"
             : "bg-purple-50 text-purple-700 border border-purple-200"
         }`}>
-          {r.distributor_name ?? r.distributor_slug ?? "—"}
+          {shortDist(r.distributor_name) !== "—" ? shortDist(r.distributor_name) : (r.distributor_slug ?? "—")}
         </span>
       ),
       sortValue: (r) => r.distributor_name ?? "",
@@ -185,7 +186,7 @@ function makeProductColumns(
 
 const categoryColumns: Column<CategoryTrendRow>[] = [
   { key: "category", label: "Category", sortable: true, render: (r) => <span className="text-sm font-medium">{r.category}</span>, sortValue: (r) => r.category },
-  { key: "distributor", label: "Dist.", sortable: true, hideBelow: "lg", render: (r) => r.distributor_name ? <span className="text-[10px] text-zinc-500">{r.distributor_name}</span> : null, sortValue: (r) => r.distributor_name ?? "" },
+  { key: "distributor", label: "Dist.", sortable: true, hideBelow: "lg", render: (r) => r.distributor_name ? <span className="text-[10px] text-zinc-500">{shortDist(r.distributor_name)}</span> : null, sortValue: (r) => r.distributor_name ?? "" },
   { key: "product_count", label: "Products", sortable: true, align: "right", render: (r) => <span className="text-sm">{r.product_count}</span>, sortValue: (r) => r.product_count },
   { key: "avg_case_cost", label: "Avg Case $", sortable: true, align: "right", render: (r) => <span className="font-mono text-sm">${r.avg_case_cost}</span>, sortValue: (r) => parseFloat(r.avg_case_cost) },
   { key: "prev_avg", label: "Prev Avg $", sortable: true, align: "right", hideBelow: "md", render: (r) => <span className="font-mono text-xs text-zinc-400">${r.prev_avg_case_cost}</span>, sortValue: (r) => parseFloat(r.prev_avg_case_cost) },
@@ -206,8 +207,8 @@ const categoryColumns: Column<CategoryTrendRow>[] = [
 // -- Cross-distributor columns -----------------------------------------------
 
 function crossCatColumns(data: CrossCategoryRow[]): Column<CrossCategoryRow>[] {
-  const nameA = data[0]?.distributor_a_name || "A";
-  const nameB = data[0]?.distributor_b_name || "B";
+  const nameA = shortDist(data[0]?.distributor_a_name) !== "—" ? shortDist(data[0]?.distributor_a_name) : "A";
+  const nameB = shortDist(data[0]?.distributor_b_name) !== "—" ? shortDist(data[0]?.distributor_b_name) : "B";
   return [
     { key: "category", label: "Category", sortable: true, render: (r) => <span className="text-sm font-medium">{r.category}</span>, sortValue: (r) => r.category },
     { key: "count_a", label: `${nameA} #`, sortable: true, align: "right", render: (r) => <span className="text-sm">{r.product_count_a}</span>, sortValue: (r) => r.product_count_a },
@@ -225,8 +226,8 @@ function crossCatColumns(data: CrossCategoryRow[]): Column<CrossCategoryRow>[] {
 }
 
 function crossRipColumns(data: CrossRipRow[]): Column<CrossRipRow>[] {
-  const nameA = data[0]?.distributor_a_name || "A";
-  const nameB = data[0]?.distributor_b_name || "B";
+  const nameA = shortDist(data[0]?.distributor_a_name) !== "—" ? shortDist(data[0]?.distributor_a_name) : "A";
+  const nameB = shortDist(data[0]?.distributor_b_name) !== "—" ? shortDist(data[0]?.distributor_b_name) : "B";
   return [
     { key: "category", label: "Category", sortable: true, render: (r) => <span className="text-sm font-medium">{r.category}</span>, sortValue: (r) => r.category },
     { key: "rip_a", label: `${nameA} RIPs`, sortable: true, align: "right", render: (r) => <span className="text-sm">{r.rip_count_a}</span>, sortValue: (r) => r.rip_count_a },
@@ -239,8 +240,8 @@ function crossRipColumns(data: CrossRipRow[]): Column<CrossRipRow>[] {
 }
 
 function crossBrandColumns(data: CrossBrandRow[]): Column<CrossBrandRow>[] {
-  const nameA = data[0]?.distributor_a_name || "A";
-  const nameB = data[0]?.distributor_b_name || "B";
+  const nameA = shortDist(data[0]?.distributor_a_name) !== "—" ? shortDist(data[0]?.distributor_a_name) : "A";
+  const nameB = shortDist(data[0]?.distributor_b_name) !== "—" ? shortDist(data[0]?.distributor_b_name) : "B";
   return [
     { key: "brand", label: "Brand", sortable: true, render: (r) => <span className="text-sm font-medium">{r.brand}</span>, sortValue: (r) => r.brand },
     { key: "count_a", label: `${nameA}`, sortable: true, align: "right", render: (r) => <span className="text-sm">{r.count_a}</span>, sortValue: (r) => r.count_a },
@@ -257,8 +258,8 @@ function crossBrandColumns(data: CrossBrandRow[]): Column<CrossBrandRow>[] {
 }
 
 function crossPriceColumns(data: CrossPriceRow[]): Column<CrossPriceRow>[] {
-  const nameA = data[0]?.distributor_a_name || "A";
-  const nameB = data[0]?.distributor_b_name || "B";
+  const nameA = shortDist(data[0]?.distributor_a_name) !== "—" ? shortDist(data[0]?.distributor_a_name) : "A";
+  const nameB = shortDist(data[0]?.distributor_b_name) !== "—" ? shortDist(data[0]?.distributor_b_name) : "B";
   return [
     { key: "desc", label: "Product", sortable: true, render: (r) => <span className="text-sm">{r.canonical_description ?? "—"}</span>, sortValue: (r) => r.canonical_description ?? "" },
     { key: "size", label: "Size", sortable: false, hideBelow: "sm", render: (r) => <span className="text-xs">{r.size ?? "—"}</span> },

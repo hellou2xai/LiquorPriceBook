@@ -27,3 +27,9 @@ export function pctClass(v: string | number | null | undefined): string {
 export function intOrDash(v: number | null | undefined): string {
   return v == null ? "—" : v.toLocaleString();
 }
+
+/** Shorten distributor names: "Fedway Associates" → "Fedway", "Allied Beverage Group" → "Allied" */
+export function shortDist(name: string | null | undefined): string {
+  if (!name) return "—";
+  return name.split(/\s+/)[0];
+}

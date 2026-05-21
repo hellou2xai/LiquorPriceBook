@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import { catalogApi, watchlistApi } from "../lib/api";
 import type { Facets } from "../lib/api";
-import { money, pct, pctClass } from "../lib/fmt";
+import { money, pct, pctClass, shortDist } from "../lib/fmt";
 import FavoriteButton from "../components/FavoriteButton";
 import ProductContextMenu, { useContextMenu } from "../components/ProductContextMenu";
 import TrackedOnlyToggle from "../components/TrackedOnlyToggle";
@@ -714,7 +714,7 @@ export default function Catalog() {
                               ? "bg-blue-50 text-blue-700 border border-blue-200"
                               : "bg-purple-50 text-purple-700 border border-purple-200"
                           }`}>
-                            {p.distributor_name ?? p.distributor_slug ?? "\u2014"}
+                            {shortDist(p.distributor_name) !== "—" ? shortDist(p.distributor_name) : (p.distributor_slug ?? "\u2014")}
                           </span>
                         </td>
                         <td className="px-3 py-2 text-zinc-600 hidden sm:table-cell">{p.size ?? "\u2014"}</td>

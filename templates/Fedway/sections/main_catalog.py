@@ -390,6 +390,14 @@ def _classify_line(text: str) -> str:
     if re.match(r"^\d+(CASE|BOTTLE|SLEEVE|CASES|BOTTLES|SLEEVES)\b", stripped):
         return "price"
 
+    # OCR spaced-out fallback: collapse all spaces and re-check for price/item
+    # patterns. Handles "1 CA S E $333.96" → "1CASE$333.96" and similar.
+    collapsed = stripped.replace(" ", "")
+    if re.match(r"^\d+(CASE|CASES|BOTTLE|BOTTLES|SLEEVE|SLEEVES)\b", collapsed):
+        return "price"
+    if re.match(r"^RIP:\d", collapsed):
+        return "rip"
+
     # Check if it's a category/country header
     upper = stripped.upper()
     if upper in _CATEGORY_WORDS or upper in _COUNTRY_REGION_WORDS:
@@ -409,6 +417,21 @@ def _classify_line(text: str) -> str:
         return "price"
     if upper.endswith("ONLY") and re.search(r"\d{2}/\d{2}", stripped):
         return "price"
+
+    # Garbled OCR line that looks like an item code line with spaced-out
+    # numbers/sizes/prices — skip these to avoid polluting descriptions.
+    # Pattern: starts with digits and has a high digit-to-alpha ratio,
+    # or starts with 5+ digits followed by size/pack patterns.
+    if re.match(r"^\d", stripped):
+        alpha = sum(1 for c in stripped if c.isalpha())
+        digit = sum(1 for c in stripped if c.isdigit())
+        if digit > alpha and "$" in stripped:
+            return "price"
+        if digit > alpha and len(stripped) > 15:
+            return "skip"
+        # Pure item-code data: 5+ leading digits then size/pack tokens
+        if re.match(r"^\d{5,}\s*(?:ML|LT|ASST)", stripped, re.IGNORECASE):
+            return "skip"
 
     # Brand or description text — if all uppercase and no dollar signs
     if "$" not in stripped and not re.search(r"\d{4,}", stripped):
@@ -613,6 +636,31 @@ def _extract_brand(text: str) -> str | None:
     return brand
 
 
+# Pattern to detect trailing item-code data that bled in from adjacent columns.
+# Matches: code-like digits followed by size/pack/proof/price fragments.
+_CROSS_COLUMN_BLEED_RE = re.compile(
+    r"\s+\d{4,9}\s*\d*\s*(?:ML|LT|OZ|PK|PF|ASST)"
+    r"|"
+    r"\s+\+\s+\d\s+\d{4,}"       # "+ 3 69310" spaced-out code
+    r"|"
+    r"\s+\d{5,}\d*\s*(?:ML|LT|PK)"  # "5294501   LT"
+    , re.IGNORECASE
+)
+
+
+def _clean_cross_column_bleed(desc: str) -> str:
+    """Strip trailing cross-column bleed from description text.
+
+    E.g.: "GENTLEMAN JACK 48710200   ML24   PK80.0   PFMAY" → "GENTLEMAN JACK"
+    """
+    m = _CROSS_COLUMN_BLEED_RE.search(desc)
+    if m:
+        cleaned = desc[:m.start()].strip()
+        if cleaned:
+            return cleaned
+    return desc
+
+
 # --------------------------------------------------------------------------
 # Column-based parser
 # --------------------------------------------------------------------------
@@ -701,6 +749,7 @@ def _parse_lane(
     current_rips = []
     current_prices = []
     saw_price_after_item = False  # Track if we've seen prices for the current item
+    brand_set_in_lane = False  # True once a brand line is seen in THIS lane (not inherited)
 
     def _flush():
         nonlocal current_item, current_description, last_description, current_rips, current_prices
@@ -747,7 +796,7 @@ def _parse_lane(
         if current_brand:
             desc_parts.append(current_brand)
         if current_description:
-            desc_parts.append(current_description)
+            desc_parts.append(_clean_cross_column_bleed(current_description))
         description = " ".join(desc_parts) if desc_parts else None
 
         # Parse BUY deal as RIP offers.
@@ -829,10 +878,12 @@ def _parse_lane(
 
         elif line_type == "header":
             upper = text.strip().upper()
-            # If we already have a brand but no item yet, a category word
-            # (like "VODKA" after "GILBEY'S F LA GP JNC") is a sub-brand
-            # description, not a new section header.
-            if current_brand and current_item is None and upper in _CATEGORY_WORDS:
+            # If we already have a brand (set in THIS lane, not inherited) but
+            # no item yet, a category word (like "VODKA" after "GILBEY'S F LA
+            # GP JNC") is a sub-brand description, not a new section header.
+            # Don't apply this for brands carried from a previous lane, as
+            # those category headers are genuine section transitions.
+            if current_brand and brand_set_in_lane and current_item is None and upper in _CATEGORY_WORDS:
                 if current_description:
                     current_description += " " + text.strip()
                 else:
@@ -874,6 +925,7 @@ def _parse_lane(
         elif line_type == "brand":
             _flush()
             current_brand = _extract_brand(text)
+            brand_set_in_lane = True
             current_description = None
             last_description = None
 

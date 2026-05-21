@@ -85,17 +85,17 @@ export default function ProductDetail() {
 
   return (
     <div className="space-y-6">
+      <button
+        onClick={() => navigate(-1)}
+        className="inline-flex items-center gap-1.5 text-sm text-zinc-600 hover:text-brand-navy transition-colors mb-1"
+      >
+        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+        </svg>
+        Back
+      </button>
       <header className="flex flex-col md:flex-row md:items-end md:justify-between gap-3">
         <div className="space-y-1">
-          <button
-            onClick={() => navigate(-1)}
-            className="inline-flex items-center gap-1 text-xs text-zinc-500 hover:text-brand-navy transition-colors"
-          >
-            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-            </svg>
-            Back
-          </button>
           <div className="text-xs uppercase tracking-wide text-zinc-500">
             {d.category_display ?? "Uncategorised"}
             {d.brand_display ? <span> · {d.brand_display}</span> : null}
