@@ -707,8 +707,11 @@ def _record_low_confidence(
 _DIVISION_SUFFIX_RE = re.compile(
     r"\s+(?:[LSDGFBJDIV]{1,2}\s*)+\(\s*[LSDGFBJDIV ]+\s*\)\s*$"
     r"|"
-    r"\s*\(\s*[LSDGFBJDIV ]{3,}\s*\)\s*$"
+    r"\s*\(\s*[LSDGFBJDIV ]+\s*\)\s*$"
 )
+
+# Bare division codes that should never be a description on their own.
+_BARE_DIVISION_CODES = {"L", "S", "D", "GS", "FB", "JD", "IV"}
 
 
 def _clean_description(desc: str | None) -> str | None:
@@ -719,6 +722,9 @@ def _clean_description(desc: str | None) -> str | None:
     """
     if not desc:
         return desc
+    # Bare division code (e.g. "L") is not a real description
+    if desc.strip() in _BARE_DIVISION_CODES:
+        return None
     cleaned = _DIVISION_SUFFIX_RE.sub("", desc).strip()
     return cleaned or desc
 

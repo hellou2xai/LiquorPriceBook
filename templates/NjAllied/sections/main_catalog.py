@@ -194,14 +194,14 @@ def extract_divisions(text):
     """Extract division codes from parenthesized block.
 
     Only whitelisted NJ Allied division codes are accepted.
-    A valid block has at least 2 such codes, e.g. ``( L GS FB IV )``.
+    e.g. ``( L GS FB IV )`` -> ``"L GS FB IV"``, ``( L )`` -> ``"L"``.
     """
     m = _TERRITORY_PAREN_RE.search(text)
     if not m:
         return None
     tokens = m.group(1).strip().split()
     valid = [t for t in tokens if t in _VALID_DIVISIONS]
-    if len(valid) >= 2:
+    if len(valid) >= 1 and len(valid) == len(tokens):
         return " ".join(valid)
     return None
 
@@ -495,6 +495,8 @@ def parse_main_catalog(pages, source):
                         saved_brand[lane] = current_brand[lane]
                         pending_brand[lane] = text
                 else:
+                    # Skip bare division codes (e.g. "L") — not a real sub-brand
+                    bare_div = text.strip() in _VALID_DIVISIONS
                     if pending_brand[lane] is not None:
                         if divs:
                             # The buffered "brand" was a wrapped sub-brand.
@@ -504,10 +506,11 @@ def parse_main_catalog(pages, source):
                         else:
                             # Next line has no divisions — buffer was a real brand.
                             current_brand[lane] = pending_brand[lane]
-                            current_sub[lane] = text
+                            if not bare_div:
+                                current_sub[lane] = text
                             last_sub[lane] = None
                         pending_brand[lane] = None
                         saved_brand[lane] = None
-                    else:
+                    elif not bare_div:
                         current_sub[lane] = text
     return rows
