@@ -68,12 +68,25 @@ export default function PriceChart({ data, height = 240 }: Props) {
   // Empty / insufficient state
   // -------------------------------------------------------------------------
   if (data.length < 2) {
+    const single = data[0];
     return (
       <div
         style={{ height }}
-        className="flex items-center justify-center rounded-lg bg-[#FAFAF9] border border-zinc-100 text-sm text-zinc-400 select-none"
+        className="flex flex-col items-center justify-center rounded-lg bg-[#FAFAF9] border border-zinc-100 text-sm select-none gap-1"
       >
-        Not enough history for chart
+        {single ? (
+          <>
+            <span className="text-zinc-500">{single.edition_label} — single edition on record</span>
+            {single.case_cost != null && (
+              <span className="text-lg font-semibold text-zinc-800">{fmt(single.case_cost)}</span>
+            )}
+            {single.has_rip && single.effective_cost != null && (
+              <span className="text-xs text-[#D04A02]">After RIP: {fmt(single.effective_cost)}</span>
+            )}
+          </>
+        ) : (
+          <span className="text-zinc-400">Not enough history for chart</span>
+        )}
       </div>
     );
   }
@@ -427,6 +440,24 @@ export default function PriceChart({ data, height = 240 }: Props) {
               <span className="font-medium text-zinc-800">{fmt(hovered.case_cost)}</span>
             </p>
           )}
+
+          {/* Month-over-month change */}
+          {hoveredIdx > 0 && hovered.case_cost != null && (() => {
+            const prev = data[hoveredIdx - 1];
+            if (prev.case_cost == null) return null;
+            const diff = hovered.case_cost - prev.case_cost;
+            const pctChg = (diff / prev.case_cost) * 100;
+            const isDown = diff < 0;
+            const isUp = diff > 0;
+            return (
+              <p className={`flex justify-between gap-3 ${isDown ? "text-emerald-600" : isUp ? "text-red-600" : "text-zinc-500"}`}>
+                <span>vs {prev.edition_label}</span>
+                <span className="font-medium">
+                  {diff > 0 ? "+" : ""}{fmt(diff)} ({pctChg > 0 ? "+" : ""}{pctChg.toFixed(1)}%)
+                </span>
+              </p>
+            );
+          })()}
 
           {hovered.has_rip && hovered.best_rip_save != null && (
             <p className="flex justify-between gap-3 text-[#D04A02]">

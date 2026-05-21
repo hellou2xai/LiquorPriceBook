@@ -3,6 +3,7 @@ import { useParams, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { aiApi, catalogApi, notesApi, ordersApi, priceHistoryApi, watchlistApi } from "../lib/api";
+import type { PriceDataPoint, PriceHistorySummary } from "../lib/api";
 import { money, pct, pctClass } from "../lib/fmt";
 import { useDistributor } from "../lib/distributor";
 import PriceChart from "../components/PriceChart";
@@ -191,8 +192,11 @@ export default function ProductDetail() {
         </div>
         {priceHistQ.isLoading ? (
           <div className="h-48 flex items-center justify-center text-sm text-zinc-400">Loading chart...</div>
-        ) : ph?.data_points ? (
-          <PriceChart data={ph.data_points} height={220} />
+        ) : ph?.data_points && ph.data_points.length > 0 ? (
+          <>
+            <PriceChart data={ph.data_points} height={220} />
+            <PriceBreakdownTable data={ph.data_points} summary={ph.summary} />
+          </>
         ) : (
           <div className="h-48 flex items-center justify-center text-sm text-zinc-400">No price history available</div>
         )}
@@ -340,6 +344,158 @@ function VerdictCard({
       <p className="mt-1 text-sm">{verdict.rationale}</p>
       <div className="mt-2 text-[10px] uppercase tracking-wide opacity-70">
         {verdict.cached ? "cached" : "fresh"} · {verdict.model}
+      </div>
+    </div>
+  );
+}
+
+function PriceBreakdownTable({
+  data,
+  summary,
+}: {
+  data: PriceDataPoint[];
+  summary: PriceHistorySummary;
+}) {
+  if (data.length === 0) return null;
+
+  const fmtDelta = (curr: number | null, prev: number | null) => {
+    if (curr == null || prev == null || prev === 0) return null;
+    const diff = curr - prev;
+    const pctChg = (diff / prev) * 100;
+    return { diff, pctChg };
+  };
+
+  const latest = data[data.length - 1];
+  const oldest = data[0];
+
+  return (
+    <div className="mt-4 space-y-3">
+      {/* Summary banner */}
+      {data.length >= 2 && (
+        <div className="rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm">
+          <div className="font-medium text-brand-navy mb-1">
+            Price Analysis: {oldest.edition_label} → {latest.edition_label}
+            <span className="ml-2 text-xs font-normal text-zinc-500">
+              ({data.length} edition{data.length !== 1 ? "s" : ""} tracked)
+            </span>
+          </div>
+          {oldest.case_cost != null && latest.case_cost != null && (() => {
+            const delta = fmtDelta(latest.case_cost, oldest.case_cost);
+            if (!delta) return null;
+            const isDown = delta.diff < 0;
+            const isUp = delta.diff > 0;
+            return (
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-2 text-xs">
+                <div>
+                  <span className="text-zinc-500">First ({oldest.edition_label}):</span>{" "}
+                  <span className="font-medium text-zinc-800">{money(oldest.case_cost)}</span>
+                </div>
+                <div>
+                  <span className="text-zinc-500">Latest ({latest.edition_label}):</span>{" "}
+                  <span className="font-medium text-zinc-800">{money(latest.case_cost)}</span>
+                </div>
+                <div>
+                  <span className="text-zinc-500">Change:</span>{" "}
+                  <span className={`font-medium ${isDown ? "text-emerald-700" : isUp ? "text-red-700" : "text-zinc-600"}`}>
+                    {delta.diff > 0 ? "+" : ""}{money(delta.diff)} ({delta.pctChg > 0 ? "+" : ""}{delta.pctChg.toFixed(1)}%)
+                  </span>
+                </div>
+              </div>
+            );
+          })()}
+          {summary.avg_case_cost != null && (
+            <div className="mt-1 text-xs text-zinc-500">
+              Average case cost across all editions: <span className="font-medium text-zinc-700">{money(summary.avg_case_cost)}</span>
+              {summary.min_case_cost != null && summary.max_case_cost != null && (
+                <span> · Range: {money(summary.min_case_cost)} – {money(summary.max_case_cost)}</span>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Month-by-month detail table */}
+      <div className="overflow-x-auto">
+        <table className="min-w-full text-xs">
+          <thead className="bg-brand-tan text-[10px] uppercase text-brand-navy">
+            <tr>
+              <th className="px-3 py-1.5 text-left">Edition</th>
+              <th className="px-3 py-1.5 text-right">Case Cost</th>
+              <th className="px-3 py-1.5 text-right">Btl Cost</th>
+              <th className="px-3 py-1.5 text-right">Change</th>
+              <th className="px-3 py-1.5 text-right">% Change</th>
+              <th className="px-3 py-1.5 text-right">RIP Save</th>
+              <th className="px-3 py-1.5 text-right">Effective</th>
+              <th className="px-3 py-1.5 text-center">Flags</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-zinc-100">
+            {data.map((dp, i) => {
+              const prev = i > 0 ? data[i - 1] : null;
+              const delta = fmtDelta(dp.case_cost, prev?.case_cost ?? null);
+              const isDown = delta && delta.diff < 0;
+              const isUp = delta && delta.diff > 0;
+              return (
+                <tr key={`${dp.year}-${dp.month}`} className={i === data.length - 1 ? "bg-blue-50/40" : ""}>
+                  <td className="px-3 py-1.5 font-medium text-zinc-800 whitespace-nowrap">
+                    {dp.edition_label}
+                    {i === data.length - 1 && (
+                      <span className="ml-1.5 text-[9px] font-semibold uppercase text-brand-orange">Current</span>
+                    )}
+                  </td>
+                  <td className="px-3 py-1.5 text-right tabular-nums font-medium text-zinc-800">
+                    {dp.case_cost != null ? money(dp.case_cost) : "—"}
+                  </td>
+                  <td className="px-3 py-1.5 text-right tabular-nums text-zinc-600">
+                    {dp.btl_cost != null ? money(dp.btl_cost) : "—"}
+                  </td>
+                  <td className="px-3 py-1.5 text-right tabular-nums">
+                    {delta ? (
+                      <span className={isDown ? "text-emerald-700" : isUp ? "text-red-700" : "text-zinc-500"}>
+                        {delta.diff > 0 ? "+" : ""}{money(delta.diff)}
+                      </span>
+                    ) : (
+                      <span className="text-zinc-300">—</span>
+                    )}
+                  </td>
+                  <td className="px-3 py-1.5 text-right tabular-nums">
+                    {delta ? (
+                      <span className={isDown ? "text-emerald-700" : isUp ? "text-red-700" : "text-zinc-500"}>
+                        {delta.pctChg > 0 ? "+" : ""}{delta.pctChg.toFixed(1)}%
+                      </span>
+                    ) : (
+                      <span className="text-zinc-300">—</span>
+                    )}
+                  </td>
+                  <td className="px-3 py-1.5 text-right tabular-nums">
+                    {dp.best_rip_save != null ? (
+                      <span className="text-brand-orange font-medium">-{money(dp.best_rip_save)}</span>
+                    ) : (
+                      <span className="text-zinc-300">—</span>
+                    )}
+                  </td>
+                  <td className="px-3 py-1.5 text-right tabular-nums font-medium">
+                    {dp.effective_cost != null ? money(dp.effective_cost) : "—"}
+                  </td>
+                  <td className="px-3 py-1.5 text-center">
+                    <span className="inline-flex gap-1">
+                      {dp.has_rip && (
+                        <span className="inline-block rounded bg-emerald-50 border border-emerald-200 px-1 py-0.5 text-[9px] font-semibold text-emerald-700">
+                          RIP
+                        </span>
+                      )}
+                      {dp.has_closeout && (
+                        <span className="inline-block rounded bg-rose-50 border border-rose-200 px-1 py-0.5 text-[9px] font-semibold text-rose-700">
+                          CLO
+                        </span>
+                      )}
+                    </span>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
     </div>
   );
