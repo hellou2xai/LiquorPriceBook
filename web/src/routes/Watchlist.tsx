@@ -7,27 +7,7 @@ import type { OrderItem, OrderSummary } from "../lib/api";
 import { money } from "../lib/fmt";
 import { useDistributor } from "../lib/distributor";
 import FavoriteButton from "../components/FavoriteButton";
-
-type SortKey = "name" | "price_asc" | "price_desc" | "rip_save" | "buy_signal";
-
-function sortItems(items: OrderItem[], key: SortKey): OrderItem[] {
-  const copy = [...items];
-  const signalRank: Record<string, number> = { BUY_NOW: 0, GOOD_BUY: 1, HOLD: 2, DEFER: 3 };
-  switch (key) {
-    case "name":
-      return copy.sort((a, b) => (a.description ?? "").localeCompare(b.description ?? ""));
-    case "price_asc":
-      return copy.sort((a, b) => (parseFloat(a.case_cost ?? "999999") - parseFloat(b.case_cost ?? "999999")));
-    case "price_desc":
-      return copy.sort((a, b) => (parseFloat(b.case_cost ?? "0") - parseFloat(a.case_cost ?? "0")));
-    case "rip_save":
-      return copy.sort((a, b) => (parseFloat(b.rip_save_amount ?? "0") - parseFloat(a.rip_save_amount ?? "0")));
-    case "buy_signal":
-      return copy.sort((a, b) => (signalRank[a.buy_signal] ?? 9) - (signalRank[b.buy_signal] ?? 9));
-    default:
-      return copy;
-  }
-}
+import SortableTable, { useSort, Column } from "../components/SortableTable";
 
 type CartQty = { bottles: number; cases: number };
 
@@ -124,7 +104,7 @@ function TargetPrice({ code, field, initial }: { code: string; field: "target_ca
   return (
     <div className="relative">
       <input type="text" inputMode="decimal" value={value} onChange={(e) => setValue(e.target.value)} onBlur={handleBlur}
-        placeholder="—"
+        placeholder="\u2014"
         className="w-16 rounded border border-transparent bg-transparent px-1 py-0.5 text-xs tabular-nums text-right placeholder:text-zinc-300 hover:border-zinc-200 focus:border-zinc-400 focus:bg-white focus:outline-none text-zinc-500"
       />
       {flash && <span className="absolute -top-4 right-0 text-[10px] text-emerald-600 font-medium animate-pulse">Saved</span>}
@@ -171,7 +151,7 @@ function BuySignalBadge({ signal, reasons }: { signal: string; reasons: string[]
       </span>
       {reasons.length > 0 && (
         <div className="text-[10px] text-zinc-500 leading-tight">
-          {reasons.slice(0, 2).join(" · ")}
+          {reasons.slice(0, 2).join(" \u00b7 ")}
         </div>
       )}
     </div>
@@ -391,7 +371,6 @@ export default function Watchlist() {
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<string>("");
-  const [sort, setSort] = useState<SortKey>("buy_signal");
   const [cart, setCart] = useState<Map<string, CartQty>>(new Map());
   const [groupByCategory, setGroupByCategory] = useState(false);
   const [templates, setTemplatesState] = useState<OrderTemplate[]>(loadTemplates);
@@ -400,6 +379,8 @@ export default function Watchlist() {
   const [history, setHistoryState] = useState<OrderHistoryEntry[]>(loadHistory);
   const [showHistory, setShowHistory] = useState(false);
   const { distributor } = useDistributor();
+
+  const { sort: sortConfig, toggle: toggleSort, sorted } = useSort<OrderItem>({ key: "description", direction: "asc" });
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search), 250);
@@ -420,8 +401,6 @@ export default function Watchlist() {
   });
   const draftOrders = draftOrdersQ.data ?? [];
 
-  const items = useMemo(() => (q.data ? sortItems(q.data, sort) : []), [q.data, sort]);
-
   const categories = useMemo(() => {
     if (!q.data) return [];
     const map = new Map<string, string>();
@@ -441,6 +420,184 @@ export default function Watchlist() {
       return next;
     });
   }
+
+  // ── Column definitions ──
+
+  const columns = useMemo<Column<OrderItem>[]>(() => [
+    {
+      key: "favorite",
+      label: "",
+      render: (item) => <FavoriteButton code={item.product_code} isFavorite={true} />,
+      thClassName: "w-7",
+    },
+    {
+      key: "code",
+      label: "Code",
+      sortable: true,
+      sortValue: (item) => item.product_code,
+      render: (item) => (
+        <span className="text-xs font-mono text-zinc-500">{item.product_code}</span>
+      ),
+    },
+    {
+      key: "description",
+      label: "Description",
+      sortable: true,
+      sortValue: (item) => item.description ?? "",
+      render: (item) => (
+        <div>
+          <Link to={`/catalog/${item.product_code}`} className="hover:underline font-medium text-brand-navy hover:text-brand-orange">
+            {item.description ?? "Unknown"}
+          </Link>
+          <div className="mt-0.5">
+            <BuySignalBadge signal={item.buy_signal} reasons={item.buy_reasons ?? []} />
+          </div>
+        </div>
+      ),
+    },
+    {
+      key: "brand",
+      label: "Brand",
+      sortable: true,
+      sortValue: (item) => item.brand_display ?? "",
+      hideBelow: "sm" as const,
+      render: (item) => (
+        <span className="text-zinc-600 text-xs">{item.brand_display ?? "\u2014"}</span>
+      ),
+    },
+    {
+      key: "size",
+      label: "Size",
+      sortable: true,
+      sortValue: (item) => item.size ?? "",
+      hideBelow: "sm" as const,
+      render: (item) => (
+        <span className="text-zinc-600 text-xs">{item.size ?? ""}{item.pack ? ` / ${item.pack}pk` : ""}</span>
+      ),
+    },
+    {
+      key: "case_cost",
+      label: "Case Cost",
+      sortable: true,
+      align: "right" as const,
+      sortValue: (item) => parseFloat(item.case_cost ?? "999999"),
+      render: (item) => (
+        <div>
+          <span className="tabular-nums">{money(item.case_cost)}</span>
+          <div className="mt-0.5"><PriceTrend item={item} /></div>
+        </div>
+      ),
+    },
+    {
+      key: "btl_cost",
+      label: "Btl Cost",
+      sortable: true,
+      align: "right" as const,
+      hideBelow: "md" as const,
+      sortValue: (item) => parseFloat(item.btl_cost ?? "999999"),
+      render: (item) => (
+        <span className="tabular-nums text-xs text-zinc-600">{money(item.btl_cost)}</span>
+      ),
+    },
+    {
+      key: "rip_save",
+      label: "RIP Save",
+      sortable: true,
+      align: "right" as const,
+      sortValue: (item) => parseFloat(item.rip_save_amount ?? "0"),
+      render: (item) => {
+        const rips = item.all_rips ?? [];
+        if (!item.has_rip || rips.length === 0) return <span className="text-zinc-300 text-xs">{"\u2014"}</span>;
+        const best = rips[rips.length - 1];
+        return (
+          <div className="text-right">
+            <span className="text-emerald-700 font-medium text-xs tabular-nums">{money(item.rip_save_amount)}</span>
+            <div className="text-[10px] text-zinc-400">{best.tier_cases}CS min{rips.length > 1 ? ` \u00b7 ${rips.length} tiers` : ""}</div>
+          </div>
+        );
+      },
+    },
+    {
+      key: "effective",
+      label: "Effective",
+      sortable: true,
+      align: "right" as const,
+      sortValue: (item) => parseFloat(item.effective_case ?? item.case_cost ?? "999999"),
+      render: (item) => {
+        if (!item.effective_case) return <span className="text-zinc-300 text-xs">{"\u2014"}</span>;
+        return (
+          <span className="tabular-nums font-medium text-emerald-700">{money(item.effective_case)}</span>
+        );
+      },
+    },
+    {
+      key: "qty",
+      label: "Qty",
+      align: "center" as const,
+      render: (item) => {
+        const qty = getQty(item.product_code);
+        return (
+          <div className="flex flex-col gap-1 text-xs">
+            <div className="flex items-center gap-1">
+              <span className="w-8 text-zinc-500 text-[10px]">Btl</span>
+              <button onClick={() => setQty(item.product_code, { bottles: Math.max(0, qty.bottles - 1) })} className="rounded border border-zinc-300 bg-white w-5 h-5 flex items-center justify-center hover:bg-zinc-100 disabled:opacity-40 text-xs" disabled={qty.bottles === 0}>-</button>
+              <input
+                type="number" min={0} value={qty.bottles}
+                onChange={(e) => setQty(item.product_code, { bottles: Math.max(0, parseInt(e.target.value) || 0) })}
+                className="w-8 text-center tabular-nums font-medium text-xs rounded border border-zinc-200 bg-white py-0 focus:border-zinc-400 focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+              />
+              <button onClick={() => setQty(item.product_code, { bottles: qty.bottles + 1 })} className="rounded border border-zinc-300 bg-white w-5 h-5 flex items-center justify-center hover:bg-zinc-100 text-xs">+</button>
+            </div>
+            <div className="flex items-center gap-1">
+              <span className="w-8 text-zinc-500 text-[10px]">Case</span>
+              <button onClick={() => setQty(item.product_code, { cases: Math.max(0, qty.cases - 1) })} className="rounded border border-zinc-300 bg-white w-5 h-5 flex items-center justify-center hover:bg-zinc-100 disabled:opacity-40 text-xs" disabled={qty.cases === 0}>-</button>
+              <input
+                type="number" min={0} value={qty.cases}
+                onChange={(e) => setQty(item.product_code, { cases: Math.max(0, parseInt(e.target.value) || 0) })}
+                className="w-8 text-center tabular-nums font-medium text-xs rounded border border-zinc-200 bg-white py-0 focus:border-zinc-400 focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+              />
+              <button onClick={() => setQty(item.product_code, { cases: qty.cases + 1 })} className="rounded border border-zinc-300 bg-white w-5 h-5 flex items-center justify-center hover:bg-zinc-100 text-xs">+</button>
+            </div>
+            <RipProgress item={item} cartCases={qty.cases} />
+          </div>
+        );
+      },
+    },
+    {
+      key: "notes",
+      label: "Notes",
+      render: (item) => <InlineNote code={item.product_code} initial={item.notes} />,
+    },
+    {
+      key: "target",
+      label: "Target",
+      align: "right" as const,
+      hideBelow: "md" as const,
+      render: (item) => (
+        <TargetPrice code={item.product_code} field="target_case_price" initial={item.target_case_price} />
+      ),
+    },
+    {
+      key: "add_to_order",
+      label: "",
+      render: (item) => {
+        const qty = getQty(item.product_code);
+        return (
+          <AddToOrderButton
+            code={item.product_code}
+            qty={qty}
+            draftOrders={draftOrders}
+            onAdded={() => {
+              qc.invalidateQueries({ queryKey: ["orders"] });
+              qc.invalidateQueries({ queryKey: ["order-detail"] });
+            }}
+          />
+        );
+      },
+    },
+  ], [cart, draftOrders, qc]); // eslint-disable-line react-hooks/exhaustive-deps -- getQty/setQty use cart
+
+  const items = useMemo(() => (q.data ? sorted(q.data, columns) : []), [q.data, sorted, columns]);
 
   const summary = useMemo(() => {
     let totalItems = 0, totalCost = 0;
@@ -569,209 +726,6 @@ export default function Watchlist() {
     return Object.entries(groups).sort(([a], [b]) => a.localeCompare(b));
   }, [items, groupByCategory]);
 
-  function renderRow(item: OrderItem) {
-    const qty = getQty(item.product_code);
-    const rips = item.all_rips ?? [];
-    const hasMultipleRips = rips.length > 1;
-
-    // Find the best qualifying RIP tier for the user's cart quantity.
-    // Tiers are sorted by tier_cases ascending. Pick the highest tier
-    // the user qualifies for (tier_cases <= qty.cases).
-    const qualifiedRip = qty.cases > 0
-      ? [...rips].reverse().find((r) => qty.cases >= r.tier_cases)
-      : null;
-    const afterRipCase = qualifiedRip?.effective_case;
-    const afterRipGp = qualifiedRip?.discount_pct;
-
-    const mainRow = (
-      <tr key={item.product_code} className={`hover:bg-brand-tan align-top ${item.buy_signal === "BUY_NOW" ? "bg-emerald-50/30" : item.buy_signal === "DEFER" ? "bg-amber-50/20" : ""}`}>
-        <td className="px-2 py-2">
-          <FavoriteButton code={item.product_code} isFavorite={true} />
-        </td>
-
-        {/* Buy Signal */}
-        <td className="px-2 py-2">
-          <BuySignalBadge signal={item.buy_signal} reasons={item.buy_reasons ?? []} />
-        </td>
-
-        {/* Product */}
-        <td className="px-2 py-2">
-          <Link to={`/catalog/${item.product_code}`} className="hover:underline font-medium text-brand-navy hover:text-brand-orange">
-            {item.description ?? "Unknown"}
-          </Link>
-          <div className="text-xs text-zinc-500 mt-0.5">
-            {item.size ?? ""}{item.pack ? ` / ${item.pack}pk` : ""} · {item.product_code}
-          </div>
-        </td>
-
-        <td className="px-2 py-2 text-zinc-600 text-xs hidden lg:table-cell">{item.category_display ?? "\u2014"}</td>
-        <td className="px-2 py-2 text-zinc-600 text-xs hidden lg:table-cell">{item.brand_display ?? "\u2014"}</td>
-        <td className="px-2 py-2 text-zinc-500 text-[10px] font-mono hidden lg:table-cell">{item.divisions ?? "\u2014"}</td>
-
-        {/* Regular Case */}
-        <td className="px-2 py-2 text-right tabular-nums">{money(item.case_cost)}</td>
-
-        {/* Trend */}
-        <td className="px-2 py-2 text-right hidden sm:table-cell">
-          <PriceTrend item={item} />
-        </td>
-
-        {/* RIP Details — shows qualifying tier based on cart qty */}
-        <td className="px-2 py-2 hidden md:table-cell">
-          {qualifiedRip ? (
-            <div>
-              <span className="inline-flex items-center rounded-md bg-emerald-50 border border-emerald-300 px-1.5 py-0.5 text-[10px] font-medium text-emerald-800">
-                {qualifiedRip.tier_cases}CS
-              </span>
-              <div className="text-[10px] text-emerald-700 font-medium mt-0.5">
-                save {money(qualifiedRip.save_amount)}/cs
-              </div>
-              {hasMultipleRips && (
-                <div className="text-[10px] text-zinc-400 mt-0.5">{rips.length} tiers</div>
-              )}
-            </div>
-          ) : item.has_rip && rips.length > 0 ? (
-            <div>
-              <span className="inline-flex items-center rounded-md bg-amber-50 border border-amber-200 px-1.5 py-0.5 text-[10px] font-medium text-amber-800">
-                {rips[0].tier_cases}CS
-              </span>
-              <div className="text-[10px] text-zinc-400 mt-0.5">
-                min {rips[0].tier_cases} case{rips[0].tier_cases !== 1 ? "s" : ""}
-              </div>
-              {hasMultipleRips && (
-                <div className="text-[10px] text-zinc-400 mt-0.5">{rips.length} tiers</div>
-              )}
-            </div>
-          ) : (
-            <span className="text-zinc-300 text-xs">{"\u2014"}</span>
-          )}
-        </td>
-
-        {/* After RIP Case — based on cart qty matching a RIP tier */}
-        <td className={`px-2 py-2 text-right tabular-nums font-medium hidden sm:table-cell ${afterRipCase ? "text-emerald-700" : ""}`}>
-          {afterRipCase ? money(afterRipCase) : <span className="text-zinc-300 text-xs">{"\u2014"}</span>}
-        </td>
-
-        {/* GP% w/RIP — based on cart qty matching a RIP tier */}
-        <td className="px-2 py-2 text-right tabular-nums hidden md:table-cell">
-          {afterRipGp ? (
-            <span className="text-emerald-700 font-medium text-xs">{parseFloat(afterRipGp).toFixed(1)}%</span>
-          ) : (
-            <span className="text-zinc-300 text-xs">{"\u2014"}</span>
-          )}
-        </td>
-
-        {/* Target */}
-        <td className="px-2 py-2 hidden lg:table-cell">
-          <TargetPrice code={item.product_code} field="target_case_price" initial={item.target_case_price} />
-        </td>
-
-        {/* Note */}
-        <td className="px-2 py-2 hidden lg:table-cell">
-          <InlineNote code={item.product_code} initial={item.notes} />
-        </td>
-
-        {/* Qty */}
-        <td className="px-2 py-2">
-          <div className="flex flex-col gap-1 text-xs">
-            <div className="flex items-center gap-1">
-              <span className="w-8 text-zinc-500 text-[10px]">Btl</span>
-              <button onClick={() => setQty(item.product_code, { bottles: Math.max(0, qty.bottles - 1) })} className="rounded border border-zinc-300 bg-white w-5 h-5 flex items-center justify-center hover:bg-zinc-100 disabled:opacity-40 text-xs" disabled={qty.bottles === 0}>-</button>
-              <input
-                type="number" min={0} value={qty.bottles}
-                onChange={(e) => setQty(item.product_code, { bottles: Math.max(0, parseInt(e.target.value) || 0) })}
-                className="w-8 text-center tabular-nums font-medium text-xs rounded border border-zinc-200 bg-white py-0 focus:border-zinc-400 focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-              />
-              <button onClick={() => setQty(item.product_code, { bottles: qty.bottles + 1 })} className="rounded border border-zinc-300 bg-white w-5 h-5 flex items-center justify-center hover:bg-zinc-100 text-xs">+</button>
-            </div>
-            <div className="flex items-center gap-1">
-              <span className="w-8 text-zinc-500 text-[10px]">Case</span>
-              <button onClick={() => setQty(item.product_code, { cases: Math.max(0, qty.cases - 1) })} className="rounded border border-zinc-300 bg-white w-5 h-5 flex items-center justify-center hover:bg-zinc-100 disabled:opacity-40 text-xs" disabled={qty.cases === 0}>-</button>
-              <input
-                type="number" min={0} value={qty.cases}
-                onChange={(e) => setQty(item.product_code, { cases: Math.max(0, parseInt(e.target.value) || 0) })}
-                className="w-8 text-center tabular-nums font-medium text-xs rounded border border-zinc-200 bg-white py-0 focus:border-zinc-400 focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-              />
-              <button onClick={() => setQty(item.product_code, { cases: qty.cases + 1 })} className="rounded border border-zinc-300 bg-white w-5 h-5 flex items-center justify-center hover:bg-zinc-100 text-xs">+</button>
-            </div>
-            <RipProgress item={item} cartCases={qty.cases} />
-          </div>
-        </td>
-
-        {/* Line Total */}
-        <td className="px-2 py-2 text-right tabular-nums hidden sm:table-cell">
-          {(() => {
-            if (qty.bottles + qty.cases === 0) return <span className="text-zinc-300 text-xs">{"\u2014"}</span>;
-            const caseP = qualifiedRip ? parseFloat(qualifiedRip.effective_case ?? "0") : parseFloat(item.case_cost ?? "0");
-            const btlP = qualifiedRip ? parseFloat(qualifiedRip.effective_btl ?? item.btl_cost ?? "0") : parseFloat(item.btl_cost ?? "0");
-            const total = qty.cases * caseP + qty.bottles * btlP;
-            return <span className="font-medium text-xs">{money(total.toFixed(2))}</span>;
-          })()}
-        </td>
-
-        {/* Add to Order */}
-        <td className="px-2 py-2">
-          <AddToOrderButton
-            code={item.product_code}
-            qty={qty}
-            draftOrders={draftOrders}
-            onAdded={() => {
-              qc.invalidateQueries({ queryKey: ["orders"] });
-              qc.invalidateQueries({ queryKey: ["order-detail"] });
-            }}
-          />
-        </td>
-      </tr>
-    );
-
-    // Render each additional RIP tier as a sub-row
-    if (!hasMultipleRips) return mainRow;
-
-    const tierRows = rips.map((rip, idx) => {
-      const isBest = rip.save_amount === item.rip_save_amount && rip.tier === item.rip_tier;
-      return (
-        <tr key={`${item.product_code}-rip-${idx}`} className={`${isBest ? "bg-emerald-50/40" : "bg-zinc-50/50"} border-l-2 ${isBest ? "border-l-emerald-400" : "border-l-amber-300"}`}>
-          <td className="px-2 py-1.5" colSpan={6}>
-            <div className="pl-6 flex items-center gap-2">
-              <span className="text-[10px] text-zinc-400">RIP Tier:</span>
-              <span className={`inline-flex items-center rounded-md border px-1.5 py-0.5 text-[10px] font-medium ${isBest ? "bg-emerald-50 border-emerald-300 text-emerald-800" : "bg-amber-50 border-amber-200 text-amber-800"}`}>
-                {rip.tier}
-              </span>
-              <span className="text-[10px] text-zinc-500">{rip.tier_cases} case{rip.tier_cases !== 1 ? "s" : ""} min</span>
-              {isBest && <span className="text-[10px] text-emerald-600 font-medium">BEST</span>}
-            </div>
-          </td>
-          {/* Case cost — same */}
-          <td className="px-2 py-1.5 text-right tabular-nums text-xs text-zinc-400">{money(item.case_cost)}</td>
-          {/* Trend — empty for sub-row */}
-          <td className="px-2 py-1.5"></td>
-          {/* RIP save */}
-          <td className="px-2 py-1.5">
-            <span className="text-[10px] text-emerald-700 font-medium">save {money(rip.save_amount)}/cs</span>
-          </td>
-          {/* After RIP */}
-          <td className={`px-2 py-1.5 text-right tabular-nums text-xs font-medium ${isBest ? "text-emerald-700" : "text-emerald-600"}`}>
-            {money(rip.effective_case)}
-          </td>
-          {/* GP% */}
-          <td className="px-2 py-1.5 text-right tabular-nums">
-            {rip.discount_pct ? (
-              <span className="text-emerald-700 font-medium text-[10px]">{parseFloat(rip.discount_pct).toFixed(1)}%</span>
-            ) : (
-              <span className="text-zinc-300 text-[10px]">{"\u2014"}</span>
-            )}
-          </td>
-          {/* Target, Note, Qty, Add to Order — empty for sub-rows */}
-          <td className="px-2 py-1.5" colSpan={5}></td>
-        </tr>
-      );
-    });
-
-    return <>{mainRow}{tierRows}</>;
-  }
-
-  const COL_SPAN = 16;
-
   return (
     <div className="space-y-4">
       <header className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
@@ -892,13 +846,6 @@ export default function Watchlist() {
           <option value="">All categories</option>
           {categories.map(([slug, display]) => (<option key={slug} value={slug}>{display}</option>))}
         </select>
-        <select value={sort} onChange={(e) => setSort(e.target.value as SortKey)} className="rounded-md border border-zinc-300 bg-white px-2.5 py-2 text-sm focus:border-brand-orange focus:outline-none">
-          <option value="buy_signal">Buy Signal</option>
-          <option value="name">Product A-Z</option>
-          <option value="price_asc">Price low-high</option>
-          <option value="price_desc">Price high-low</option>
-          <option value="rip_save">Best RIP savings</option>
-        </select>
         <label className="flex items-center gap-1.5 text-sm text-zinc-600 cursor-pointer">
           <input type="checkbox" checked={groupByCategory} onChange={(e) => setGroupByCategory(e.target.checked)} className="rounded border-zinc-300 text-brand-orange focus:ring-brand-orange" />
           Group by category
@@ -907,68 +854,38 @@ export default function Watchlist() {
 
       {/* Table */}
       <div className="rounded-xl shadow-sm border border-zinc-200 bg-white overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-zinc-200 text-sm">
-            <thead className="bg-brand-tan text-left text-[10px] uppercase tracking-wide text-brand-navy">
-              <tr>
-                <th className="px-2 py-2 w-7"></th>
-                <th className="px-2 py-2">Signal</th>
-                <th className="px-2 py-2">Product</th>
-                <th className="px-2 py-2 hidden lg:table-cell">Category</th>
-                <th className="px-2 py-2 hidden lg:table-cell">Brand</th>
-                <th className="px-2 py-2 hidden lg:table-cell">Div</th>
-                <th className="px-2 py-2 text-right">Case</th>
-                <th className="px-2 py-2 text-right hidden sm:table-cell">Trend</th>
-                <th className="px-2 py-2 hidden md:table-cell">RIP</th>
-                <th className="px-2 py-2 text-right hidden sm:table-cell">After RIP</th>
-                <th className="px-2 py-2 text-right hidden md:table-cell">GP%</th>
-                <th className="px-2 py-2 text-right hidden lg:table-cell">Target</th>
-                <th className="px-2 py-2 hidden lg:table-cell">Note</th>
-                <th className="px-2 py-2 text-center">Qty</th>
-                <th className="px-2 py-2 text-right hidden sm:table-cell">Line Total</th>
-                <th className="px-2 py-2"></th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-zinc-100">
-              {q.isLoading ? (
-                <tr><td colSpan={COL_SPAN} className="px-4 py-6 text-center text-zinc-500">Loading...</td></tr>
-              ) : items.length === 0 ? (
-                <tr>
-                  <td colSpan={COL_SPAN} className="px-4 py-6 text-center text-zinc-500">
-                    No items yet. Browse the <Link to="/catalog" className="text-brand-orange underline hover:text-brand-orange-dark">Catalog</Link> and star products to add them.
-                  </td>
-                </tr>
-              ) : groupedItems ? (
-                groupedItems.map(([cat, catItems]) => (
-                  <>
-                    <tr key={`cat-${cat}`} className="bg-brand-tan">
-                      <td colSpan={COL_SPAN} className="px-4 py-2 text-xs font-semibold text-brand-navy uppercase tracking-wide">
-                        {cat} ({catItems.length})
-                        {summary.byCat[cat] && <span className="ml-3 font-normal normal-case text-zinc-500">Subtotal: {money(summary.byCat[cat].cost)}</span>}
-                      </td>
-                    </tr>
-                    {catItems.map(renderRow)}
-                  </>
-                ))
-              ) : (
-                items.map(renderRow)
-              )}
-            </tbody>
-            {summary.totalItems > 0 && (
-              <tfoot>
-                <tr className="bg-brand-tan font-medium text-sm border-t-2 border-zinc-300">
-                  <td colSpan={13} className="px-2 py-3 text-right">
-                    Order Total ({summary.totalItems} item{summary.totalItems === 1 ? "" : "s"})
-                  </td>
-                  <td className="px-2 py-3 text-right tabular-nums hidden sm:table-cell text-brand-navy">
-                    {money(summary.totalCost.toFixed(2))}
-                  </td>
-                  <td colSpan={2}></td>
-                </tr>
-              </tfoot>
-            )}
-          </table>
-        </div>
+        {q.isLoading ? (
+          <div className="text-center py-12 text-zinc-500">Loading...</div>
+        ) : groupedItems ? (
+          /* Grouped view: render a SortableTable per category group */
+          <div>
+            {groupedItems.map(([cat, catItems]) => (
+              <div key={cat}>
+                <div className="bg-brand-tan px-4 py-2 text-xs font-semibold text-brand-navy uppercase tracking-wide border-b border-zinc-200">
+                  {cat} ({catItems.length})
+                  {summary.byCat[cat] && <span className="ml-3 font-normal normal-case text-zinc-500">Subtotal: {money(summary.byCat[cat].cost)}</span>}
+                </div>
+                <SortableTable<OrderItem>
+                  columns={columns}
+                  data={catItems}
+                  sort={sortConfig}
+                  onSort={toggleSort}
+                  rowKey={(item) => item.product_code}
+                  emptyMessage="No items in this category."
+                />
+              </div>
+            ))}
+          </div>
+        ) : (
+          <SortableTable<OrderItem>
+            columns={columns}
+            data={items}
+            sort={sortConfig}
+            onSort={toggleSort}
+            rowKey={(item) => item.product_code}
+            emptyMessage={`No items yet. Browse the Catalog and star products to add them.`}
+          />
+        )}
 
         {/* Summary bar */}
         {items.length > 0 && (

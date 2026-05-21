@@ -646,6 +646,58 @@ def submit_order(
     return {"status": "submitted", "submitted_at": order.submitted_at.isoformat()}
 
 
+@router.post("/api/v1/orders/{order_id}/clone", response_model=OrderSummaryOut, status_code=201)
+def clone_order(
+    order_id: UUID,
+    user: dict = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    original = _get_order(session, order_id, user["tenant_id"])
+
+    clone = Watchlist(
+        tenant_id=user["tenant_id"],
+        name=f"{original.name} (Copy)",
+        is_default=False,
+        division=original.division,
+        status="draft",
+    )
+    session.add(clone)
+    session.flush()
+
+    # Copy all items from the original order
+    orig_items = session.execute(
+        select(WatchlistItem).where(WatchlistItem.watchlist_id == original.id)
+    ).scalars().all()
+
+    for wi in orig_items:
+        session.add(WatchlistItem(
+            watchlist_id=clone.id,
+            product_id=wi.product_id,
+            qty_cases=wi.qty_cases,
+            qty_bottles=wi.qty_bottles,
+            selected_rip_tier=wi.selected_rip_tier,
+            notes=wi.notes,
+        ))
+
+    _audit(session, tenant_id=user["tenant_id"], user_id=user["user_id"],
+           entity_table="watchlists", entity_id=clone.id, action="insert",
+           after={"name": clone.name, "division": clone.division,
+                  "cloned_from": str(original.id)})
+    session.commit()
+
+    cnt = len(orig_items)
+    total_cases = sum(wi.qty_cases for wi in orig_items)
+    total_bottles = sum(wi.qty_bottles for wi in orig_items)
+
+    return OrderSummaryOut(
+        id=str(clone.id), name=clone.name, division=clone.division,
+        status=clone.status, order_notes=clone.order_notes,
+        item_count=cnt, total_cases=total_cases, total_bottles=total_bottles,
+        created_at=clone.created_at.isoformat(),
+        updated_at=clone.updated_at.isoformat(),
+    )
+
+
 # ── Order Detail with Analytics ──────────────────────────────────────────
 
 @router.get("/api/v1/orders/{order_id}", response_model=OrderDetailOut)

@@ -77,6 +77,14 @@ export default function Orders() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["orders"] }),
   });
 
+  const cloneMut = useMutation({
+    mutationFn: (id: string) => ordersApi.clone(id),
+    onSuccess: (order) => {
+      queryClient.invalidateQueries({ queryKey: ["orders"] });
+      navigate(`/orders/${order.id}`);
+    },
+  });
+
   const deleteMut = useMutation({
     mutationFn: (id: string) => ordersApi.remove(id),
     onSuccess: () => {
@@ -207,6 +215,14 @@ export default function Orders() {
               Hide
             </button>
           )}
+          <button
+            onClick={() => cloneMut.mutate(o.id)}
+            disabled={cloneMut.isPending}
+            className="rounded border border-zinc-300 bg-brand-tan text-brand-navy px-2 py-0.5 text-[10px] hover:bg-zinc-200 disabled:opacity-50"
+            title="Clone this order"
+          >
+            Clone
+          </button>
           {confirmDelete === o.id ? (
             <span className="flex items-center gap-1">
               <button
@@ -235,7 +251,7 @@ export default function Orders() {
         </div>
       ),
     },
-  ], [confirmDelete, hideMut, unhideMut, deleteMut]);
+  ], [confirmDelete, hideMut, unhideMut, cloneMut, deleteMut]);
 
   const rows = useMemo(() => {
     const data = ordersQ.data ?? [];

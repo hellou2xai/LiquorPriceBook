@@ -1,7 +1,8 @@
+import { useState } from "react";
 import { useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { aiApi, catalogApi, notesApi, priceHistoryApi, watchlistApi } from "../lib/api";
+import { aiApi, catalogApi, notesApi, ordersApi, priceHistoryApi, watchlistApi } from "../lib/api";
 import { money, pct, pctClass } from "../lib/fmt";
 import { useDistributor } from "../lib/distributor";
 import PriceChart from "../components/PriceChart";
@@ -57,6 +58,18 @@ export default function ProductDetail() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["notes", code, distributor] }),
   });
 
+  const [orderDropdownOpen, setOrderDropdownOpen] = useState(false);
+
+  const draftOrdersQ = useQuery({
+    queryKey: ["orders", { status: "draft" }],
+    queryFn: () => ordersApi.list({ status: "draft" }),
+  });
+
+  const addToOrder = useMutation({
+    mutationFn: (orderId: string) => ordersApi.addItem(orderId, { code }),
+    onSuccess: () => setOrderDropdownOpen(false),
+  });
+
   if (!detailQ.data && detailQ.isLoading) {
     return <div className="text-zinc-500">Loading…</div>;
   }
@@ -99,6 +112,38 @@ export default function ProductDetail() {
               Add to order list
             </button>
           )}
+          <div className="relative">
+            <button
+              onClick={() => setOrderDropdownOpen(!orderDropdownOpen)}
+              className="rounded-md border border-zinc-300 bg-brand-tan text-brand-navy px-3 py-1.5 text-sm hover:bg-zinc-200 flex items-center gap-1"
+            >
+              Add to Order
+              <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+            {orderDropdownOpen && (
+              <div className="absolute right-0 mt-1 w-56 rounded-lg border border-zinc-200 bg-white shadow-lg z-50 py-1">
+                {draftOrdersQ.data && draftOrdersQ.data.length > 0 ? (
+                  draftOrdersQ.data.map((o) => (
+                    <button
+                      key={o.id}
+                      onClick={() => addToOrder.mutate(o.id)}
+                      disabled={addToOrder.isPending}
+                      className="w-full text-left px-3 py-2 text-sm hover:bg-brand-tan flex items-center justify-between"
+                    >
+                      <span>{o.name}</span>
+                      {o.division && (
+                        <span className="text-[10px] font-medium text-zinc-400">{o.division}</span>
+                      )}
+                    </button>
+                  ))
+                ) : (
+                  <div className="px-3 py-2 text-xs text-zinc-400">No draft orders</div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </header>
 

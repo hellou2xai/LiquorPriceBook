@@ -375,7 +375,7 @@ def missed_opportunities(
             .where(WatchlistItem.watchlist_id == default_wl.id)
         ).scalars().all())
 
-    dslug, dname = distributor, distributor
+    dslug = distributor
     dist_row = session.execute(
         select(Distributor.slug, Distributor.name)
         .where(Distributor.id == edition.distributor_id)

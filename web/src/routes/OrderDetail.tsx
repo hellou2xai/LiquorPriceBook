@@ -248,6 +248,11 @@ export default function OrderDetailPage() {
     onSuccess: invalidate,
   });
 
+  const cloneOrder = useMutation({
+    mutationFn: () => ordersApi.clone(id),
+    onSuccess: (newOrder) => navigate(`/orders/${newOrder.id}`),
+  });
+
   const submitOrder = useMutation({
     mutationFn: () => ordersApi.submit(id),
     onSuccess: invalidate,
@@ -704,6 +709,13 @@ export default function OrderDetailPage() {
             className="rounded-md border border-zinc-300 bg-brand-tan text-brand-navy px-3 py-1.5 text-xs font-medium hover:bg-zinc-200"
           >
             Export Excel
+          </button>
+          <button
+            onClick={() => cloneOrder.mutate()}
+            disabled={cloneOrder.isPending}
+            className="rounded-md border border-zinc-300 bg-brand-tan text-brand-navy px-3 py-1.5 text-xs font-medium hover:bg-zinc-200 disabled:opacity-50"
+          >
+            {cloneOrder.isPending ? "Cloning..." : "Clone Order"}
           </button>
           {/* Email Rep dropdown */}
           <div className="relative">

@@ -626,6 +626,8 @@ export const ordersApi = {
     api<OrderSummary>(`/api/v1/orders/${id}/hide`, { method: "POST" }),
   unhide: (id: string) =>
     api<OrderSummary>(`/api/v1/orders/${id}/unhide`, { method: "POST" }),
+  clone: (id: string) =>
+    api<OrderSummary>(`/api/v1/orders/${id}/clone`, { method: "POST" }),
   exportUrl: (id: string, format = "xlsx", division?: string) =>
     `${API_BASE}/api/v1/orders/${id}/export${_qs({ format, division })}`,
 };
