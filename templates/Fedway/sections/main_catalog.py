@@ -679,6 +679,11 @@ def _group_words_into_lanes(words: list[dict], lanes: list[tuple]) -> list[list[
 
 _DESPACED_RE = re.compile(r"(?<!\S)((?:[A-Za-z0-9$./\\] ){3,}[A-Za-z0-9$./\\])(?!\S)")
 
+# Also match runs with multi-space gaps between single chars:
+# "1 0 8  P R O OF" or "17 3 8   A C CORD"
+_DESPACED_MULTI_RE = re.compile(
+    r"(?<!\S)((?:[A-Za-z0-9$./\\]\s+){2,}[A-Za-z0-9$./\\])(?=\s|$)"
+)
 
 _OCR_WORD_SPLITS = re.compile(
     r"\b(BOT)\s+(TLE)"          # BOTTLE → BOT TLE
@@ -686,6 +691,14 @@ _OCR_WORD_SPLITS = re.compile(
     r"|(SLEEV)\s+(ES?)"         # SLEEVE → SLEEV E
     r"|(DIS)\s*(TIL)\s*(LE)"    # DISTILLE → DIS TIL LE
     r"|(WHISK)\s*(EY)"          # WHISKEY → WHISK EY
+    r"|(CO)\s+(GNAC)"           # COGNAC → CO GNAC
+    r"|(LI)\s*Q\s*(U)\s*(EUR)"  # LIQUEUR → LI Q U EUR
+    r"|(AN)\s*(EJ)\s*(O)"       # ANEJO → AN EJ O
+    r"|(TEQU)\s*(IL)\s*(A)"     # TEQUILA → TEQU IL A
+    r"|(BLAN)\s*(CO)"           # BLANCO → BLAN CO
+    r"|(AC)\s*(CORD)"           # ACCORD → AC CORD
+    r"|(DAN)\s*(IELS)"          # DANIELS → DAN IELS
+    r"|(PR)\s*(OOF)"            # PROOF → PR OOF (multi-space variant)
     , re.IGNORECASE
 )
 
@@ -695,7 +708,9 @@ def _despace_ocr(text: str) -> str:
     def _collapse(m: re.Match) -> str:
         return m.group(0).replace(" ", "")
     text = _DESPACED_RE.sub(_collapse, text)
-    # Also fix common OCR word splits
+    # Collapse multi-space single-char runs: "1 0 8  P R O OF"
+    text = _DESPACED_MULTI_RE.sub(_collapse, text)
+    # Fix common OCR word splits
     text = _OCR_WORD_SPLITS.sub(_collapse, text)
     return text
 

@@ -92,7 +92,7 @@ def get_category(page):
     Headers appear like 'BLENDED WHISKEY' near y=12-18 in either the left
     third (for odd pages: ELIZABETH ... Allied Beverage Group CATEGORY) or
     the right side. They are all caps."""
-    words = page.extract_words()
+    words = page.extract_words(x_tolerance=3, y_tolerance=3)
     top_words = [w for w in words if w["top"] < 25]
     # Drop the banner pieces we don't want
     banned = {"ELIZABETH", "(800)", "272-1323", "272�1323", "Allied", "Beverage", "Group"}
@@ -112,16 +112,43 @@ def get_category(page):
     return " ".join(pieces) if pieces else None
 
 
+def _despace(text):
+    """Collapse spaced-out OCR fragments: '0 0 1 4 2 2 0' → '0014220'.
+
+    Only collapses runs of single characters separated by single spaces.
+    Leaves normal multi-char words untouched.
+    """
+    parts = text.split(" ")
+    out = []
+    run = []
+    for p in parts:
+        if len(p) <= 1:
+            run.append(p)
+        else:
+            if run:
+                out.append("".join(run))
+                run = []
+            out.append(p)
+    if run:
+        out.append("".join(run))
+    return " ".join(out)
+
+
 def assemble_row_values(lane_words, lane):
     """Given lane words for one row, snap each word to its nearest field anchor.
-    Multiple words landing in the same field are concatenated in x0 order."""
+    Multiple words landing in the same field are concatenated in x0 order.
+    Single-character fragments are collapsed to fix OCR fragmentation."""
     field_vals = defaultdict(list)
     for w in lane_words:
         f = field_of_word(w, lane)
         if f is None:
             continue
         field_vals[f].append(w["text"])
-    return {k: " ".join(v) for k, v in field_vals.items()}
+    result = {}
+    for k, v in field_vals.items():
+        joined = " ".join(v)
+        result[k] = _despace(joined)
+    return result
 
 
 def parse_pack(s):
@@ -324,7 +351,7 @@ def parse_main_catalog(pages, source):
         saved_brand[0] = None
 
         category = get_category(page)
-        words = page.extract_words()
+        words = page.extract_words(x_tolerance=3, y_tolerance=3)
         words = [w for w in words
                  if PAGE_HEADER_Y < w["top"] < PAGE_FOOTER_Y]
         clusters = cluster_rows(words)
@@ -386,6 +413,8 @@ def parse_main_catalog(pages, source):
                     continue
 
                 text = " ".join(w["text"] for w in lane_words).strip()
+                # Also collapse any OCR fragments in the text line
+                text = _despace(text)
 
                 # Skip column-header lines that slipped through
                 if text.startswith("Code Size Pk") or text.startswith("No. Cost") \
@@ -397,6 +426,14 @@ def parse_main_catalog(pages, source):
                 # Skip boilerplate
                 if "STANDARD PACKED" in text or "ABC Reg" in text \
                     or "STAN" in text and "PA" in text and "M E" in text:
+                    continue
+                # Skip garbled product rows that failed is_product_code().
+                # These contain digit-heavy text with embedded sizes/prices
+                # e.g. "0014220 1.75L 622 7.94 37.99"
+                digit_count = sum(1 for c in text if c.isdigit())
+                alpha_count = sum(1 for c in text if c.isalpha())
+                if digit_count > alpha_count and digit_count >= 5:
+                    # Looks like a garbled product/price row, not a brand/sub
                     continue
 
                 # RIP annotation: attach to previous product in this lane
