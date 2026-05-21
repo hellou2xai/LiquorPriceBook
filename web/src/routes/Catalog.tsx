@@ -6,6 +6,8 @@ import { catalogApi, watchlistApi } from "../lib/api";
 import type { Facets } from "../lib/api";
 import { money, pct, pctClass } from "../lib/fmt";
 import FavoriteButton from "../components/FavoriteButton";
+import ProductContextMenu, { useContextMenu } from "../components/ProductContextMenu";
+import TrackedOnlyToggle from "../components/TrackedOnlyToggle";
 
 const PAGE_SIZES = [25, 50, 100, 250, 500, 1000] as const;
 const DEFAULT_PAGE_SIZE = 50;
@@ -457,6 +459,8 @@ export default function Catalog() {
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [filterPanelOpen, setFilterPanelOpen] = useState(true);
+  const [trackedOnly, setTrackedOnly] = useState(false);
+  const ctx = useContextMenu();
 
   // Catalog shows all distributors by default
   const catalogDistributor = "all";
@@ -523,8 +527,14 @@ export default function Catalog() {
     placeholderData: (prev) => prev,
   });
 
-  const total = productsQ.data?.total ?? 0;
-  const lastPage = Math.max(0, Math.ceil(total / pageSize) - 1);
+  const displayItems = useMemo(() => {
+    const items = productsQ.data?.items ?? [];
+    if (!trackedOnly) return items;
+    return items.filter((p) => favCodes.has(p.code));
+  }, [productsQ.data?.items, trackedOnly, favCodes]);
+
+  const total = trackedOnly ? displayItems.length : (productsQ.data?.total ?? 0);
+  const lastPage = trackedOnly ? 0 : Math.max(0, Math.ceil((productsQ.data?.total ?? 0) / pageSize) - 1);
 
   function updateFilters(f: Filters) {
     setFilters(f);
@@ -572,6 +582,7 @@ export default function Catalog() {
           onChange={(e) => setFilters({ ...filters, search: e.target.value })}
           className="flex-1 rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm focus:border-brand-orange focus:outline-none"
         />
+        <TrackedOnlyToggle active={trackedOnly} onChange={setTrackedOnly} count={trackedOnly ? displayItems.length : undefined} />
         {(filters.search || filters.categories.size > 0 || filters.brands.size > 0 || filters.divisions.size > 0 || filters.sizes.size > 0 || filters.hasRip !== null || filters.minPrice || filters.maxPrice) && (
           <button
             onClick={() => { updateFilters(EMPTY_FILTERS); }}
@@ -653,15 +664,19 @@ export default function Catalog() {
                         Loading...
                       </td>
                     </tr>
-                  ) : productsQ.data?.items.length === 0 ? (
+                  ) : displayItems.length === 0 ? (
                     <tr>
                       <td colSpan={10} className="px-4 py-6 text-center text-zinc-500">
-                        No products match your filters.
+                        {trackedOnly ? "No tracked products on this page." : "No products match your filters."}
                       </td>
                     </tr>
                   ) : (
-                    productsQ.data?.items.map((p) => (
-                      <tr key={`${p.distributor_slug}-${p.code}`} className="hover:bg-brand-tan">
+                    displayItems.map((p) => (
+                      <tr
+                        key={`${p.distributor_slug}-${p.code}`}
+                        className="hover:bg-brand-tan"
+                        onContextMenu={(e) => ctx.handleContextMenu(e, p.code, p.distributor_slug ?? undefined)}
+                      >
                         <td className="px-3 py-2">
                           <FavoriteButton
                             code={p.code}
@@ -772,6 +787,7 @@ export default function Catalog() {
           </div>
         </div>
       </div>
+      <ProductContextMenu target={ctx.target} onClose={ctx.close} isFavorite={ctx.target ? favCodes.has(ctx.target.code) : false} />
     </div>
   );
 }

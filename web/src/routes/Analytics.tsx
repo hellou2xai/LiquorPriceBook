@@ -8,6 +8,8 @@ import {
 } from "../lib/api";
 import SortableTable, { useSort, type Column } from "../components/SortableTable";
 import FavoriteButton from "../components/FavoriteButton";
+import ProductContextMenu, { useContextMenu } from "../components/ProductContextMenu";
+import TrackedOnlyToggle from "../components/TrackedOnlyToggle";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
   PieChart, Pie, Legend,
@@ -588,6 +590,8 @@ export default function Analytics() {
   const [brandFilter, setBrandFilter] = useState("");
   const [divisionFilter, setDivisionFilter] = useState("");
   const [minPct, setMinPct] = useState(0);
+  const [trackedOnly, setTrackedOnly] = useState(false);
+  const ctx = useContextMenu();
 
   const wlQ = useQuery({ queryKey: ["watchlist"], queryFn: () => watchlistApi.list() });
   const favCodes = useMemo(() => new Set((wlQ.data ?? []).map((w) => w.product_code)), [wlQ.data]);
@@ -645,8 +649,9 @@ export default function Analytics() {
     if (brandFilter) rows = rows.filter((r) => r.brand === brandFilter);
     if (divisionFilter) rows = rows.filter((r) => r.divisions && r.divisions.includes(divisionFilter));
     if (minPct > 0) rows = rows.filter((r) => r.pct_change != null && Math.abs(r.pct_change) >= minPct);
+    if (trackedOnly) rows = rows.filter((r) => favCodes.has(r.code));
     return rows;
-  }, [data?.rows, search, categoryFilter, brandFilter, divisionFilter, minPct]);
+  }, [data?.rows, search, categoryFilter, brandFilter, divisionFilter, minPct, trackedOnly, favCodes]);
 
   const filteredCatRows = useMemo(() => {
     let rows = data?.category_rows ?? [];
@@ -834,6 +839,7 @@ export default function Analytics() {
                   <input type="number" value={minPct} onChange={(e) => setMinPct(parseFloat(e.target.value) || 0)} min={0} max={100} step={1} className="w-16 rounded-md border border-zinc-300 bg-white px-2 py-1 text-sm" />
                 </label>
               )}
+              <TrackedOnlyToggle active={trackedOnly} onChange={setTrackedOnly} count={trackedOnly ? filteredRows.length : undefined} />
               {hasActiveFilters && (
                 <button onClick={clearFilters} className="text-xs text-zinc-500 hover:text-zinc-800 underline">Clear filters</button>
               )}
@@ -890,7 +896,7 @@ export default function Analytics() {
                 {isCategoryView && filteredCatRows.length > 0 ? (
                   <SortableTable data={categorySort.sorted(filteredCatRows, categoryColumns)} columns={categoryColumns} sort={categorySort.sort} onSort={categorySort.toggle} rowKey={(r) => `${r.category}-${r.distributor_slug}`} emptyMessage="No categories match your filters." />
                 ) : !isCategoryView && !isCrossView && filteredRows.length > 0 ? (
-                  <SortableTable data={productSort.sorted(filteredRows, productColumns)} columns={productColumns} sort={productSort.sort} onSort={productSort.toggle} rowKey={(r) => `${r.distributor_slug}-${r.code}`} emptyMessage="No products match your filters." />
+                  <SortableTable data={productSort.sorted(filteredRows, productColumns)} columns={productColumns} sort={productSort.sort} onSort={productSort.toggle} rowKey={(r) => `${r.distributor_slug}-${r.code}`} emptyMessage="No products match your filters." onRowContextMenu={(e, r) => ctx.handleContextMenu(e, r.code, r.distributor_slug ?? undefined)} />
                 ) : !isCrossView ? (
                   <div className="p-8 text-center text-zinc-400 text-sm">
                     {hasActiveFilters ? "No results match your filters." : <>No results for this analysis.{!data.edition_previous && " Only one edition — comparison requires two."}</>}
@@ -911,6 +917,7 @@ export default function Analytics() {
           Select a distributor mode and analysis above to begin.
         </div>
       )}
+      <ProductContextMenu target={ctx.target} onClose={ctx.close} isFavorite={ctx.target ? favCodes.has(ctx.target.code) : false} />
     </div>
   );
 }

@@ -8,14 +8,18 @@ import { useDistributor } from "../lib/distributor";
 import { money } from "../lib/fmt";
 import FavoriteButton from "../components/FavoriteButton";
 import SortableTable, { useSort, Column } from "../components/SortableTable";
+import ProductContextMenu, { useContextMenu } from "../components/ProductContextMenu";
+import TrackedOnlyToggle from "../components/TrackedOnlyToggle";
 
 export default function Closeouts() {
   const { distributor } = useDistributor();
   const [search, setSearch] = useState("");
   const [minPct, setMinPct] = useState(0);
   const [daysFilter, setDaysFilter] = useState<"" | "new" | "aging">("");
+  const [trackedOnly, setTrackedOnly] = useState(false);
 
   const { sort, toggle, sorted } = useSort<CloseoutRow>({ key: "pct_off", direction: "desc" });
+  const ctx = useContextMenu();
 
   const wlQ = useQuery({ queryKey: ["watchlist"], queryFn: () => watchlistApi.list() });
   const favCodes = useMemo(() => new Set((wlQ.data ?? []).map((w) => w.product_code)), [wlQ.data]);
@@ -46,8 +50,11 @@ export default function Closeouts() {
     } else if (daysFilter === "aging") {
       rows = rows.filter((r) => r.days_on_list > 30);
     }
+    if (trackedOnly) {
+      rows = rows.filter((r) => favCodes.has(r.code));
+    }
     return rows;
-  }, [q.data, search, minPct, daysFilter]);
+  }, [q.data, search, minPct, daysFilter, trackedOnly, favCodes]);
 
   const stats = useMemo(() => {
     const rows = filteredRows;
@@ -190,6 +197,7 @@ export default function Closeouts() {
           <input type="number" value={minPct} onChange={(e) => setMinPct(parseFloat(e.target.value) || 0)}
             min={0} max={100} step={1} className="w-16 rounded-md border border-zinc-300 bg-white px-2 py-1 text-sm" />
         </label>
+        <TrackedOnlyToggle active={trackedOnly} onChange={setTrackedOnly} count={trackedOnly ? filteredRows.length : undefined} />
       </div>
 
       <div className="rounded-xl border border-zinc-200/80 bg-white overflow-hidden shadow-sm">
@@ -203,9 +211,11 @@ export default function Closeouts() {
             onSort={toggle}
             rowKey={(r) => r.code}
             emptyMessage="No closeouts match your filters."
+            onRowContextMenu={(e, r) => ctx.handleContextMenu(e, r.code, distributor)}
           />
         )}
       </div>
+      <ProductContextMenu target={ctx.target} onClose={ctx.close} isFavorite={ctx.target ? favCodes.has(ctx.target.code) : false} />
     </div>
   );
 }

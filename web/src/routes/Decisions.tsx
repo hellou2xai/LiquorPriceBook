@@ -9,6 +9,8 @@ import {
 import { useDistributor } from "../lib/distributor";
 import SortableTable, { useSort, type Column } from "../components/SortableTable";
 import FavoriteButton from "../components/FavoriteButton";
+import ProductContextMenu, { useContextMenu } from "../components/ProductContextMenu";
+import TrackedOnlyToggle from "../components/TrackedOnlyToggle";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
   RadialBarChart, RadialBar, PolarAngleAxis,
@@ -214,6 +216,8 @@ function missedColumns(favCodes: Set<string>): Column<MissedOpportunityRow>[] {
 
 function MissedOpportunitiesPanel({ distributor }: { distributor: string }) {
   const [typeFilter, setTypeFilter] = useState("");
+  const [trackedOnly, setTrackedOnly] = useState(false);
+  const ctx = useContextMenu();
   const { sort, toggle, sorted } = useSort<MissedOpportunityRow>({ key: "savings", direction: "desc" });
 
   const { data, isLoading, error } = useQuery({
@@ -239,7 +243,8 @@ function MissedOpportunitiesPanel({ distributor }: { distributor: string }) {
     );
   }
 
-  const filteredRows = typeFilter ? data.rows.filter((r) => r.opportunity_type === typeFilter) : data.rows;
+  const filteredRows = (typeFilter ? data.rows.filter((r) => r.opportunity_type === typeFilter) : data.rows)
+    .filter((r) => !trackedOnly || favCodes.has(r.code));
   const cols = missedColumns(favCodes);
   const summary = data.summary;
   const byType = summary.by_type as Record<string, number>;
@@ -291,13 +296,14 @@ function MissedOpportunitiesPanel({ distributor }: { distributor: string }) {
           </div>
         )}
         <div className="flex-1">
-          <div className="flex items-center gap-2 mb-3">
+          <div className="flex items-center gap-2 mb-3 flex-wrap">
             <button onClick={() => setTypeFilter("")} className={`px-2.5 py-1 rounded-md text-xs font-medium ${!typeFilter ? "bg-brand-navy text-white" : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200"}`}>All</button>
             {Object.entries(OPP_TYPE_LABELS).map(([key, { label }]) => (
               <button key={key} onClick={() => setTypeFilter(key)} className={`px-2.5 py-1 rounded-md text-xs font-medium ${typeFilter === key ? "bg-brand-navy text-white" : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200"}`}>
                 {label} ({byType[key] ?? 0})
               </button>
             ))}
+            <TrackedOnlyToggle active={trackedOnly} onChange={setTrackedOnly} />
           </div>
         </div>
       </div>
@@ -311,8 +317,14 @@ function MissedOpportunitiesPanel({ distributor }: { distributor: string }) {
           onSort={toggle}
           rowKey={(r) => `${r.code}-${r.opportunity_type}`}
           emptyMessage="No opportunities match this filter."
+          onRowContextMenu={(e, r) => ctx.handleContextMenu(e, r.code, r.distributor_slug ?? undefined)}
         />
       </div>
+      <ProductContextMenu
+        target={ctx.target}
+        onClose={ctx.close}
+        isFavorite={ctx.target ? favCodes.has(ctx.target.code) : false}
+      />
     </div>
   );
 }

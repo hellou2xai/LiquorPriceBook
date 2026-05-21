@@ -126,6 +126,7 @@ export default function SortableTable<T>({
   emptyMessage = "No items.",
   className = "",
   onRowClick,
+  onRowContextMenu,
 }: {
   columns: Column<T>[];
   data: T[];
@@ -135,6 +136,7 @@ export default function SortableTable<T>({
   emptyMessage?: string;
   className?: string;
   onRowClick?: (item: T) => void;
+  onRowContextMenu?: (e: React.MouseEvent, item: T) => void;
 }) {
   if (data.length === 0) {
     return <div className="text-center py-12 text-zinc-500">{emptyMessage}</div>;
@@ -156,6 +158,7 @@ export default function SortableTable<T>({
               key={rowKey(item, i)}
               className={`hover:bg-brand-tan ${onRowClick ? "cursor-pointer" : ""}`}
               onClick={onRowClick ? () => onRowClick(item) : undefined}
+              onContextMenu={onRowContextMenu ? (e) => onRowContextMenu(e, item) : undefined}
             >
               {columns.map((col) => {
                 const hideCls = col.hideBelow ? HIDE_CLASSES[col.hideBelow] : "";

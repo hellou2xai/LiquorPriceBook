@@ -9,6 +9,8 @@ import { money } from "../lib/fmt";
 import FavoriteButton from "../components/FavoriteButton";
 import RipRating from "../components/RipRating";
 import SortableTable, { useSort, Column } from "../components/SortableTable";
+import ProductContextMenu, { useContextMenu } from "../components/ProductContextMenu";
+import TrackedOnlyToggle from "../components/TrackedOnlyToggle";
 
 export default function Rips() {
   const { distributor } = useDistributor();
@@ -17,8 +19,10 @@ export default function Rips() {
   const [tierMax, setTierMax] = useState<number | "">("");
   const [categoryFilter, setCategoryFilter] = useState("");
   const [stabilityFilter, setStabilityFilter] = useState<"" | "stable" | "rotating">("");
+  const [trackedOnly, setTrackedOnly] = useState(false);
 
   const { sort, toggle, sorted } = useSort<RipRow>({ key: "effective_pct", direction: "desc" });
+  const ctx = useContextMenu();
 
   const wlQ = useQuery({ queryKey: ["watchlist"], queryFn: () => watchlistApi.list() });
   const favCodes = useMemo(() => new Set((wlQ.data ?? []).map((w) => w.product_code)), [wlQ.data]);
@@ -58,8 +62,11 @@ export default function Rips() {
     } else if (stabilityFilter === "rotating") {
       rows = rows.filter((r) => r.stable === false);
     }
+    if (trackedOnly) {
+      rows = rows.filter((r) => favCodes.has(r.code));
+    }
     return rows;
-  }, [ripsQ.data, search, categoryFilter, stabilityFilter]);
+  }, [ripsQ.data, search, categoryFilter, stabilityFilter, trackedOnly, favCodes]);
 
   const categories = useMemo(() => {
     if (!ripsQ.data) return [];
@@ -246,6 +253,7 @@ export default function Rips() {
           <option value="10">10 cases</option>
           <option value="25">25 cases</option>
         </select>
+        <TrackedOnlyToggle active={trackedOnly} onChange={setTrackedOnly} count={trackedOnly ? filteredRows.length : undefined} />
       </div>
 
       <div className="rounded-xl border border-zinc-200/80 bg-white overflow-hidden shadow-sm">
@@ -259,9 +267,11 @@ export default function Rips() {
             onSort={toggle}
             rowKey={(r, i) => `${r.code}-${r.tier}-${i}`}
             emptyMessage="No RIPs match your filters."
+            onRowContextMenu={(e, r) => ctx.handleContextMenu(e, r.code, distributor)}
           />
         )}
       </div>
+      <ProductContextMenu target={ctx.target} onClose={ctx.close} isFavorite={ctx.target ? favCodes.has(ctx.target.code) : false} />
     </div>
   );
 }
