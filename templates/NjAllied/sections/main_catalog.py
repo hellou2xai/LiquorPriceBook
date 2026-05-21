@@ -495,22 +495,32 @@ def parse_main_catalog(pages, source):
                         saved_brand[lane] = current_brand[lane]
                         pending_brand[lane] = text
                 else:
-                    # Skip bare division codes (e.g. "L") — not a real sub-brand
-                    bare_div = text.strip() in _VALID_DIVISIONS
+                    # Check if text is purely division codes (bare or with parens).
+                    # e.g. "L", "L ( GS FB JD IV )", "( GS FB )", "GS FB JD IV"
+                    core_no_parens = _TERRITORY_PAREN_RE.sub("", text).strip()
+                    tokens_np = core_no_parens.split() if core_no_parens else []
+                    only_divs = (
+                        (not tokens_np and divs)  # just "( L GS FB )"
+                        or (tokens_np and all(t in _VALID_DIVISIONS for t in tokens_np))
+                    )
                     if pending_brand[lane] is not None:
                         if divs:
-                            # The buffered "brand" was a wrapped sub-brand.
-                            # Concatenate with this line and keep old brand.
-                            current_sub[lane] = pending_brand[lane] + " " + text
-                            current_brand[lane] = saved_brand[lane]
+                            if only_divs:
+                                # Pure division line — buffer was a real brand.
+                                current_brand[lane] = pending_brand[lane]
+                            else:
+                                # The buffered "brand" was a wrapped sub-brand.
+                                # Concatenate with this line and keep old brand.
+                                current_sub[lane] = pending_brand[lane] + " " + text
+                                current_brand[lane] = saved_brand[lane]
                         else:
                             # Next line has no divisions — buffer was a real brand.
                             current_brand[lane] = pending_brand[lane]
-                            if not bare_div:
+                            if not only_divs:
                                 current_sub[lane] = text
                             last_sub[lane] = None
                         pending_brand[lane] = None
                         saved_brand[lane] = None
-                    elif not bare_div:
+                    elif not only_divs:
                         current_sub[lane] = text
     return rows
