@@ -18,7 +18,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
-from sqlalchemy import and_, asc, case, desc, func, or_, select
+from sqlalchemy import and_, asc, desc, func, or_, select
 from sqlalchemy.orm import Session
 
 from lpb_core.db import get_session
@@ -29,7 +29,6 @@ from lpb_core.db.models import (
     Distributor,
     InventoryReduction,
     PartialsPricing,
-    PartialsRip,
     Product,
     ProductEdition,
     RipOffer,
@@ -382,7 +381,7 @@ def missed_opportunities(
         .where(Distributor.id == edition.distributor_id)
     ).first()
     if dist_row:
-        dslug, dname = dist_row.slug, dist_row.name
+        dslug = dist_row.slug
 
     results: list[MissedOpportunityRow] = []
 
@@ -476,7 +475,8 @@ def missed_opportunities(
             case_cost=_money(r.best_case),
             opportunity_type="closeout_deal",
             closeout_pct_off=pct_off,
-            reason=f"Closeout: {pct_off}% off — being discontinued" if pct_off else "Closeout — being discontinued",
+            reason=(f"Closeout: {pct_off}% off — being discontinued"
+                    if pct_off else "Closeout — being discontinued"),
             priority=0,  # Highest priority — time-sensitive
             distributor_slug=dslug,
         ))
@@ -712,7 +712,8 @@ def order_scorecard(
             value=f"{total_rips_available}/{total_items}",
             max_value=f"{total_items}",
             score=min(rip_capture_pct * 2, 100),  # 50% capture = perfect
-            color="green" if rip_capture_pct >= 30 else "yellow" if rip_capture_pct >= 15 else "red",
+            color=("green" if rip_capture_pct >= 30
+                   else "yellow" if rip_capture_pct >= 15 else "red"),
         ),
         ScorecardMetric(
             label="RIP Savings",
