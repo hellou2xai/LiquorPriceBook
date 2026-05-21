@@ -1,5 +1,6 @@
 import { useState, useMemo, useRef, useCallback, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { ProductLink } from "../components/ProductPopup";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { watchlistApi, ordersApi } from "../lib/api";
@@ -8,6 +9,7 @@ import { money } from "../lib/fmt";
 import { useDistributor } from "../lib/distributor";
 import FavoriteButton from "../components/FavoriteButton";
 import SortableTable, { useSort, Column } from "../components/SortableTable";
+import RowLimitSelect, { useRowLimit } from "../components/RowLimitSelect";
 
 type CartQty = { bottles: number; cases: number };
 
@@ -379,6 +381,7 @@ export default function Watchlist() {
   const [history, setHistoryState] = useState<OrderHistoryEntry[]>(loadHistory);
   const [showHistory, setShowHistory] = useState(false);
   const { distributor } = useDistributor();
+  const { limit: rowLimit, setLimit: setRowLimit } = useRowLimit(100);
 
   const { sort: sortConfig, toggle: toggleSort, sorted } = useSort<OrderItem>({ key: "description", direction: "asc" });
 
@@ -446,9 +449,9 @@ export default function Watchlist() {
       sortValue: (item) => item.description ?? "",
       render: (item) => (
         <div>
-          <Link to={`/catalog/${item.product_code}`} className="hover:underline font-medium text-brand-navy hover:text-brand-orange">
+          <ProductLink code={item.product_code} distributor={distributor} className="hover:underline font-medium text-brand-navy hover:text-brand-orange text-left">
             {item.description ?? "Unknown"}
-          </Link>
+          </ProductLink>
           <div className="mt-0.5">
             <BuySignalBadge signal={item.buy_signal} reasons={item.buy_reasons ?? []} />
           </div>
@@ -597,7 +600,8 @@ export default function Watchlist() {
     },
   ], [cart, draftOrders, qc]); // eslint-disable-line react-hooks/exhaustive-deps -- getQty/setQty use cart
 
-  const items = useMemo(() => (q.data ? sorted(q.data, columns) : []), [q.data, sorted, columns]);
+  const allItems = useMemo(() => (q.data ? sorted(q.data, columns) : []), [q.data, sorted, columns]);
+  const items = useMemo(() => allItems.slice(0, rowLimit), [allItems, rowLimit]);
 
   const summary = useMemo(() => {
     let totalItems = 0, totalCost = 0;
@@ -886,6 +890,8 @@ export default function Watchlist() {
             emptyMessage={`No items yet. Browse the Catalog and star products to add them.`}
           />
         )}
+
+        <RowLimitSelect total={allItems.length} limit={rowLimit} onChange={setRowLimit} />
 
         {/* Summary bar */}
         {items.length > 0 && (

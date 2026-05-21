@@ -5,6 +5,7 @@ import { ordersApi } from "../lib/api";
 import type { OrderSummary } from "../lib/api";
 import { money } from "../lib/fmt";
 import SortableTable, { useSort, Column } from "../components/SortableTable";
+import RowLimitSelect, { useRowLimit } from "../components/RowLimitSelect";
 
 const STATUSES = ["all", "draft", "submitted", "completed"] as const;
 const DIVISIONS = ["all", "L", "S", "D", "GS", "FB", "JD", "IV"] as const;
@@ -43,6 +44,7 @@ export default function Orders() {
   const [newNotes, setNewNotes] = useState("");
 
   const { sort, toggle, sorted } = useSort<OrderSummary>({ key: "updated_at", direction: "desc" });
+  const { limit: rowLimit, setLimit: setRowLimit } = useRowLimit(100);
 
   const ordersQ = useQuery({
     queryKey: ["orders", { status: statusFilter === "all" ? undefined : statusFilter, division: divisionFilter === "all" ? undefined : divisionFilter, include_hidden: showHidden || undefined }],
@@ -253,10 +255,11 @@ export default function Orders() {
     },
   ], [confirmDelete, hideMut, unhideMut, cloneMut, deleteMut]);
 
-  const rows = useMemo(() => {
+  const allRows = useMemo(() => {
     const data = ordersQ.data ?? [];
     return sorted(data, columns);
   }, [ordersQ.data, sorted, columns]);
+  const rows = useMemo(() => allRows.slice(0, rowLimit), [allRows, rowLimit]);
 
   const hiddenCount = useMemo(() => {
     if (!showHidden || !ordersQ.data) return 0;
@@ -430,15 +433,18 @@ export default function Orders() {
               </button>
             </div>
         ) : (
-          <SortableTable
-            columns={columns}
-            data={rows}
-            sort={sort}
-            onSort={toggle}
-            rowKey={(o) => o.id}
-            emptyMessage="No orders match your filters."
-            onRowClick={(o) => navigate(`/orders/${o.id}`)}
-          />
+          <>
+            <SortableTable
+              columns={columns}
+              data={rows}
+              sort={sort}
+              onSort={toggle}
+              rowKey={(o) => o.id}
+              emptyMessage="No orders match your filters."
+              onRowClick={(o) => navigate(`/orders/${o.id}`)}
+            />
+            <RowLimitSelect total={allRows.length} limit={rowLimit} onChange={setRowLimit} />
+          </>
         )}
       </div>
     </div>

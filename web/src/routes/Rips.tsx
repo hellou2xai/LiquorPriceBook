@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { Link } from "react-router-dom";
+import { ProductLink } from "../components/ProductPopup";
 import { useQuery } from "@tanstack/react-query";
 
 import { insightsApi, watchlistApi } from "../lib/api";
@@ -11,6 +11,7 @@ import RipRating from "../components/RipRating";
 import SortableTable, { useSort, Column } from "../components/SortableTable";
 import ProductContextMenu, { useContextMenu } from "../components/ProductContextMenu";
 import TrackedOnlyToggle from "../components/TrackedOnlyToggle";
+import RowLimitSelect, { useRowLimit } from "../components/RowLimitSelect";
 
 export default function Rips() {
   const { distributor } = useDistributor();
@@ -20,6 +21,7 @@ export default function Rips() {
   const [categoryFilter, setCategoryFilter] = useState("");
   const [stabilityFilter, setStabilityFilter] = useState<"" | "stable" | "rotating">("");
   const [trackedOnly, setTrackedOnly] = useState(false);
+  const { limit: rowLimit, setLimit: setRowLimit } = useRowLimit(100);
 
   const { sort, toggle, sorted } = useSort<RipRow>({ key: "effective_pct", direction: "desc" });
   const ctx = useContextMenu();
@@ -99,7 +101,7 @@ export default function Rips() {
       sortable: true,
       sortValue: (r) => r.code,
       render: (r) => (
-        <Link to={`/catalog/${r.code}`} className="font-mono text-xs text-brand-navy hover:text-brand-orange hover:underline">{r.code}</Link>
+        <ProductLink code={r.code} distributor={distributor}>{r.code}</ProductLink>
       ),
     },
     {
@@ -108,7 +110,7 @@ export default function Rips() {
       sortable: true,
       sortValue: (r) => r.description ?? "",
       render: (r) => (
-        <Link to={`/catalog/${r.code}`} className="text-brand-navy hover:text-brand-orange hover:underline">{r.description ?? "\u2014"}</Link>
+        <ProductLink code={r.code} distributor={distributor} className="text-brand-navy hover:text-brand-orange hover:underline text-left">{r.description ?? "\u2014"}</ProductLink>
       ),
     },
     {
@@ -191,6 +193,7 @@ export default function Rips() {
   ];
 
   const sortedRows = useMemo(() => sorted(filteredRows, columns), [filteredRows, sorted, columns]);
+  const displayedRows = useMemo(() => sortedRows.slice(0, rowLimit), [sortedRows, rowLimit]);
 
   return (
     <div className="space-y-5">
@@ -260,15 +263,18 @@ export default function Rips() {
         {ripsQ.isLoading ? (
           <div className="text-center py-12 text-zinc-500">Loading...</div>
         ) : (
-          <SortableTable
-            columns={columns}
-            data={sortedRows}
-            sort={sort}
-            onSort={toggle}
-            rowKey={(r, i) => `${r.code}-${r.tier}-${i}`}
-            emptyMessage="No RIPs match your filters."
-            onRowContextMenu={(e, r) => ctx.handleContextMenu(e, r.code, distributor)}
-          />
+          <>
+            <SortableTable
+              columns={columns}
+              data={displayedRows}
+              sort={sort}
+              onSort={toggle}
+              rowKey={(r, i) => `${r.code}-${r.tier}-${i}`}
+              emptyMessage="No RIPs match your filters."
+              onRowContextMenu={(e, r) => ctx.handleContextMenu(e, r.code, distributor)}
+            />
+            <RowLimitSelect total={sortedRows.length} limit={rowLimit} onChange={setRowLimit} />
+          </>
         )}
       </div>
       <ProductContextMenu target={ctx.target} onClose={ctx.close} isFavorite={ctx.target ? favCodes.has(ctx.target.code) : false} />

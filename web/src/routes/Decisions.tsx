@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
+import { ProductLink } from "../components/ProductPopup";
 import { useQuery } from "@tanstack/react-query";
 import {
   decisionsApi,
@@ -8,6 +9,7 @@ import {
 } from "../lib/api";
 import { useDistributor } from "../lib/distributor";
 import SortableTable, { useSort, type Column } from "../components/SortableTable";
+import RowLimitSelect, { useRowLimit } from "../components/RowLimitSelect";
 import FavoriteButton from "../components/FavoriteButton";
 import ProductContextMenu, { useContextMenu } from "../components/ProductContextMenu";
 import TrackedOnlyToggle from "../components/TrackedOnlyToggle";
@@ -165,9 +167,9 @@ function missedColumns(favCodes: Set<string>): Column<MissedOpportunityRow>[] {
     {
       key: "code", label: "Code", sortable: true,
       render: (r) => r.code !== "—" ? (
-        <Link to={`/catalog/${r.code}${r.distributor_slug ? `?d=${r.distributor_slug}` : ""}`} className="text-brand-navy hover:text-brand-orange hover:underline font-mono text-xs">
+        <ProductLink code={r.code} distributor={r.distributor_slug ?? undefined}>
           {r.code}
-        </Link>
+        </ProductLink>
       ) : <span className="text-zinc-400 text-xs">—</span>,
       sortValue: (r) => r.code,
     },
@@ -219,6 +221,7 @@ function MissedOpportunitiesPanel({ distributor }: { distributor: string }) {
   const [trackedOnly, setTrackedOnly] = useState(false);
   const ctx = useContextMenu();
   const { sort, toggle, sorted } = useSort<MissedOpportunityRow>({ key: "savings", direction: "desc" });
+  const { limit: rowLimit, setLimit: setRowLimit } = useRowLimit(100);
 
   const { data, isLoading, error } = useQuery({
     queryKey: ["missed-opportunities", distributor],
@@ -311,7 +314,7 @@ function MissedOpportunitiesPanel({ distributor }: { distributor: string }) {
       {/* Table */}
       <div className="bg-white border border-zinc-200 rounded-xl shadow-sm overflow-hidden">
         <SortableTable
-          data={sorted(filteredRows, cols)}
+          data={sorted(filteredRows, cols).slice(0, rowLimit)}
           columns={cols}
           sort={sort}
           onSort={toggle}
@@ -319,6 +322,7 @@ function MissedOpportunitiesPanel({ distributor }: { distributor: string }) {
           emptyMessage="No opportunities match this filter."
           onRowContextMenu={(e, r) => ctx.handleContextMenu(e, r.code, r.distributor_slug ?? undefined)}
         />
+        <RowLimitSelect total={filteredRows.length} limit={rowLimit} onChange={setRowLimit} />
       </div>
       <ProductContextMenu
         target={ctx.target}

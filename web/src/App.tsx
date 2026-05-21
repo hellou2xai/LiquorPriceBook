@@ -4,6 +4,7 @@ import { Routes, Route, NavLink, Navigate, useLocation } from "react-router-dom"
 import ProtectedRoute from "./components/ProtectedRoute";
 import { useAuth } from "./lib/auth";
 import { DistributorProvider, useDistributor } from "./lib/distributor";
+import { ProductPopupProvider } from "./components/ProductPopup";
 
 import Dashboard from "./routes/Dashboard";
 import Catalog from "./routes/Catalog";
@@ -245,6 +246,7 @@ const protect = (el: React.ReactNode) => <ProtectedRoute>{el}</ProtectedRoute>;
 export default function App() {
   return (
     <DistributorProvider>
+    <ProductPopupProvider>
     <Shell>
       <Routes>
         <Route path="/login" element={<Login />} />
@@ -267,6 +269,7 @@ export default function App() {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Shell>
+    </ProductPopupProvider>
     </DistributorProvider>
   );
 }

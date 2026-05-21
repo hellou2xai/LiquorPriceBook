@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
+import { ProductLink } from "../components/ProductPopup";
 import {
   analyticsApi, watchlistApi,
   type AnalyticsView, type AnalyticsRow, type CategoryTrendRow,
@@ -84,9 +84,9 @@ function makeProductColumns(
     {
       key: "code", label: "Code", sortable: true,
       render: (r) => (
-        <Link to={`/catalog/${r.code}${r.distributor_slug ? `?d=${r.distributor_slug}` : ""}`} className="text-brand-navy hover:text-brand-orange hover:underline font-mono text-xs">
+        <ProductLink code={r.code} distributor={r.distributor_slug ?? undefined}>
           {r.code}
-        </Link>
+        </ProductLink>
       ),
       sortValue: (r) => r.code,
     },

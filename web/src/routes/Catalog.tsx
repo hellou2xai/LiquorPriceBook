@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { ProductLink } from "../components/ProductPopup";
 import { useQuery } from "@tanstack/react-query";
 
 import { catalogApi, watchlistApi } from "../lib/api";
@@ -687,21 +687,18 @@ export default function Catalog() {
                           />
                         </td>
                         <td className="px-3 py-2 font-mono text-xs">
-                          <Link
-                            to={`/catalog/${p.code}${p.distributor_slug ? `?d=${p.distributor_slug}` : ""}`}
-                            className="text-brand-navy hover:text-brand-orange hover:underline"
-                          >
+                          <ProductLink code={p.code} distributor={p.distributor_slug ?? undefined}>
                             {p.code}
-                          </Link>
+                          </ProductLink>
                         </td>
                         <td className="px-3 py-2 hidden md:table-cell">
                           <span className="text-xs font-semibold text-zinc-800">{p.brand_slug?.replace(/-/g, " ").toUpperCase() ?? "\u2014"}</span>
                         </td>
                         <td className="px-3 py-2">
-                          <Link to={`/catalog/${p.code}${p.distributor_slug ? `?d=${p.distributor_slug}` : ""}`} className="hover:underline">
+                          <ProductLink code={p.code} distributor={p.distributor_slug ?? undefined} className="hover:underline text-left">
                             <span className="md:hidden text-xs font-semibold text-zinc-800 mr-1">{p.brand_slug?.replace(/-/g, " ").toUpperCase()}</span>
                             {p.description ?? "\u2014"}
-                          </Link>
+                          </ProductLink>
                           {p.divisions && (
                             <span className="ml-2 text-[10px] font-mono text-zinc-400">
                               {p.divisions}

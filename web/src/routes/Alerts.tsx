@@ -1,10 +1,11 @@
 import { useMemo } from "react";
-import { Link } from "react-router-dom";
+import { ProductLink } from "../components/ProductPopup";
 import { useQuery } from "@tanstack/react-query";
 
 import { insightsApi } from "../lib/api";
 import type { AlertEvent } from "../lib/api";
 import SortableTable, { useSort, Column } from "../components/SortableTable";
+import RowLimitSelect, { useRowLimit } from "../components/RowLimitSelect";
 
 const RULE_LABELS: Record<string, string> = {
   price_drop_pct: "Price drop",
@@ -28,6 +29,7 @@ const RULE_TONE: Record<string, string> = {
 
 export default function Alerts() {
   const { sort, toggle, sorted } = useSort<AlertEvent>({ key: "fired_at", direction: "desc" });
+  const { limit: rowLimit, setLimit: setRowLimit } = useRowLimit(100);
 
   const q = useQuery({
     queryKey: ["alerts", { full: true }],
@@ -56,7 +58,7 @@ export default function Alerts() {
       sortValue: (a) => a.product_code ?? "",
       render: (a) =>
         a.product_code ? (
-          <Link to={`/catalog/${a.product_code}`} className="font-mono text-xs text-brand-navy hover:text-brand-orange hover:underline">{a.product_code}</Link>
+          <ProductLink code={a.product_code}>{a.product_code}</ProductLink>
         ) : (
           <span className="text-zinc-300 text-xs">{"\u2014"}</span>
         ),
@@ -89,6 +91,7 @@ export default function Alerts() {
   ];
 
   const sortedData = useMemo(() => sorted(data, columns), [data, sorted, columns]);
+  const displayedData = useMemo(() => sortedData.slice(0, rowLimit), [sortedData, rowLimit]);
 
   return (
     <div className="space-y-5">
@@ -103,14 +106,17 @@ export default function Alerts() {
         {q.isLoading ? (
           <div className="text-center py-12 text-zinc-500">Loading...</div>
         ) : (
-          <SortableTable
-            columns={columns}
-            data={sortedData}
-            sort={sort}
-            onSort={toggle}
-            rowKey={(a) => a.id}
-            emptyMessage="No alerts yet."
-          />
+          <>
+            <SortableTable
+              columns={columns}
+              data={displayedData}
+              sort={sort}
+              onSort={toggle}
+              rowKey={(a) => a.id}
+              emptyMessage="No alerts yet."
+            />
+            <RowLimitSelect total={sortedData.length} limit={rowLimit} onChange={setRowLimit} />
+          </>
         )}
       </div>
     </div>

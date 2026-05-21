@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { ProductLink } from "../components/ProductPopup";
 import { useQuery } from "@tanstack/react-query";
 
 import { insightsApi } from "../lib/api";
@@ -47,7 +48,7 @@ function MoverPanel({ title, subtitle, rows, loading, emptyHint, limit = 10 }: {
                 <span className={`w-5 text-center ${change < 0 ? "text-emerald-600" : change > 0 ? "text-red-500" : "text-zinc-400"}`}>
                   {change < 0 ? "\u2193" : change > 0 ? "\u2191" : "\u2192"}
                 </span>
-                <Link to={`/catalog/${m.code}`} className="font-mono text-xs hover:underline w-20 shrink-0 hidden sm:inline">{m.code}</Link>
+                <ProductLink code={m.code} className="font-mono text-xs hover:underline w-20 shrink-0 hidden sm:inline">{m.code}</ProductLink>
                 <span className="flex-1 truncate text-zinc-700">{m.description ?? "\u2014"}</span>
                 <span className="tabular-nums text-zinc-600 w-20 text-right hidden sm:inline">{money(m.case_cost)}</span>
                 <span className={`tabular-nums w-16 text-right font-medium ${pctClass(m.case_cost_pct)}`}>{pct(m.case_cost_pct)}</span>
@@ -178,7 +179,7 @@ export default function Dashboard() {
             ) : (
               ripsQ.data!.slice(0, 5).map((r, i) => (
                 <li key={`${r.code}-${i}`} className="px-4 py-2 text-sm flex items-center gap-3 hover:bg-brand-tan">
-                  <Link to={`/catalog/${r.code}`} className="font-mono text-xs hover:underline w-20 shrink-0">{r.code}</Link>
+                  <ProductLink code={r.code} className="font-mono text-xs hover:underline w-20 shrink-0">{r.code}</ProductLink>
                   <span className="flex-1 truncate text-zinc-700">{r.description ?? "\u2014"}</span>
                   <span className="inline-flex items-center rounded-md bg-brand-orange/10 border border-brand-orange/20 px-1.5 py-0.5 text-[10px] font-medium text-brand-orange">{r.tier}</span>
                   <span className="tabular-nums text-emerald-700 font-medium w-16 text-right">{money(r.save_amount)}</span>
@@ -208,7 +209,7 @@ export default function Dashboard() {
             ) : (
               closeoutsQ.data!.slice(0, 5).map((r) => (
                 <li key={r.code} className="px-4 py-2 text-sm flex items-center gap-3 hover:bg-brand-tan">
-                  <Link to={`/catalog/${r.code}`} className="font-mono text-xs hover:underline w-20 shrink-0">{r.code}</Link>
+                  <ProductLink code={r.code} className="font-mono text-xs hover:underline w-20 shrink-0">{r.code}</ProductLink>
                   <span className="flex-1 truncate text-zinc-700">{r.description ?? "\u2014"}</span>
                   <span className="tabular-nums line-through text-zinc-400 w-16 text-right">{money(r.original_case)}</span>
                   <span className="tabular-nums text-emerald-700 font-medium w-16 text-right">{money(r.best_case)}</span>
@@ -271,7 +272,7 @@ export default function Dashboard() {
                   {a.rule_type}
                 </span>
                 {a.product_code && (
-                  <Link to={`/catalog/${a.product_code}`} className="font-mono text-xs hover:underline">{a.product_code}</Link>
+                  <ProductLink code={a.product_code} className="font-mono text-xs hover:underline">{a.product_code}</ProductLink>
                 )}
                 <span className="text-zinc-600 flex-1 truncate">
                   {String((a.payload as Record<string, unknown>).description ?? "")}

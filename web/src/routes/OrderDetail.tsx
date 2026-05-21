@@ -1,10 +1,12 @@
 import { useState, useMemo } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
+import { ProductLink } from "../components/ProductPopup";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ordersApi, salesRepsApi } from "../lib/api";
 import type { OrderLine, OrderRecommendation, SalesRepOut } from "../lib/api";
 import { money } from "../lib/fmt";
 import SortableTable, { useSort, Column } from "../components/SortableTable";
+import RowLimitSelect, { useRowLimit } from "../components/RowLimitSelect";
 
 // ── Constants ──
 
@@ -342,6 +344,7 @@ export default function OrderDetailPage() {
   // ── Sort ──
 
   const { sort, toggle, sorted } = useSort<OrderLine>({ key: "description", direction: "asc" });
+  const { limit: rowLimit, setLimit: setRowLimit } = useRowLimit(100);
 
   // ── Columns ──
 
@@ -354,12 +357,9 @@ export default function OrderDetailPage() {
         sortValue: (item) => item.description ?? "",
         render: (item) => (
           <div>
-            <Link
-              to={`/catalog/${item.product_code}`}
-              className="font-medium text-brand-navy hover:text-brand-orange hover:underline"
-            >
+            <ProductLink code={item.product_code} className="font-medium text-brand-navy hover:text-brand-orange hover:underline text-left">
               {item.description ?? "Unknown"}
-            </Link>
+            </ProductLink>
             <div className="text-[10px] text-zinc-400 mt-0.5">
               {item.size ?? ""}{item.pack ? ` / ${item.pack}pk` : ""} ·{" "}
               <span className="font-mono">{item.product_code}</span>
@@ -619,7 +619,8 @@ export default function OrderDetailPage() {
     [isDraft, updateItem, removeItem],
   );
 
-  const sortedItems = sorted(filteredItems, columns);
+  const allSortedItems = sorted(filteredItems, columns);
+  const sortedItems = useMemo(() => allSortedItems.slice(0, rowLimit), [allSortedItems, rowLimit]);
 
   // ── Summaries ──
 
@@ -931,6 +932,7 @@ export default function OrderDetailPage() {
           emptyMessage="No items in this order yet."
           className={sortedItems.some((i) => i.is_closeout) ? "[&_tr]:relative" : ""}
         />
+        <RowLimitSelect total={filteredItems.length} limit={rowLimit} onChange={setRowLimit} />
       </section>
 
       {/* ── 6. Add Product Panel ── */}

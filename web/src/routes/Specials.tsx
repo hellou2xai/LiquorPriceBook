@@ -1,11 +1,12 @@
 import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { ProductLink } from "../components/ProductPopup";
 import { useQuery } from "@tanstack/react-query";
 
 import { specialsApi } from "../lib/api";
 import type { WebSpecial } from "../lib/api";
 import { money } from "../lib/fmt";
 import { useDistributor } from "../lib/distributor";
+import RowLimitSelect, { useRowLimit } from "../components/RowLimitSelect";
 
 function fmtDate(d: string): string {
   const dt = new Date(d + "T00:00:00");
@@ -48,6 +49,7 @@ type Filter = "all" | "pricing" | "rip" | "expiring";
 export default function Specials() {
   const [filter, setFilter] = useState<Filter>("all");
   const { distributor } = useDistributor();
+  const { limit: rowLimit, setLimit: setRowLimit } = useRowLimit(100);
 
   const q = useQuery({
     queryKey: ["specials-active", distributor],
@@ -82,10 +84,12 @@ export default function Specials() {
     [q.data],
   );
 
+  const displayedItems = useMemo(() => items.slice(0, rowLimit), [items, rowLimit]);
+
   // Group by date range for visual clustering
   const grouped = useMemo(() => {
     const groups: Record<string, WebSpecial[]> = {};
-    for (const s of items) {
+    for (const s of displayedItems) {
       const key = `${s.start_date}|${s.end_date}`;
       if (!groups[key]) groups[key] = [];
       groups[key].push(s);
@@ -95,7 +99,7 @@ export default function Specials() {
       const endB = b.split("|")[1];
       return endA.localeCompare(endB);
     });
-  }, [items]);
+  }, [displayedItems]);
 
   return (
     <div className="space-y-5">
@@ -146,12 +150,15 @@ export default function Specials() {
       {/* Results */}
       {q.isLoading ? (
         <div className="text-center py-12 text-zinc-500">Loading specials...</div>
-      ) : items.length === 0 ? (
+      ) : displayedItems.length === 0 ? (
         <div className="text-center py-12 text-zinc-500">
           No active web specials right now.
         </div>
       ) : (
         <div className="space-y-6">
+          <div className="rounded-lg border border-zinc-200 bg-white">
+            <RowLimitSelect total={items.length} limit={rowLimit} onChange={setRowLimit} />
+          </div>
           {grouped.map(([key, specials]) => {
             const [startDate, endDate] = key.split("|");
             const daysLeft = specials[0].days_remaining;
@@ -260,12 +267,9 @@ function SpecialRow({ special: s }: { special: WebSpecial }) {
       <td className="px-4 py-2 text-zinc-500 hidden sm:table-cell">{s.size ?? "\u2014"}</td>
       <td className="px-4 py-2 hidden sm:table-cell">
         {s.product_code ? (
-          <Link
-            to={`/catalog/${s.product_code}`}
-            className="text-brand-navy hover:text-brand-orange font-mono text-xs"
-          >
+          <ProductLink code={s.product_code}>
             {s.product_code}
-          </Link>
+          </ProductLink>
         ) : (
           <span className="text-zinc-300 text-xs">unlinked</span>
         )}

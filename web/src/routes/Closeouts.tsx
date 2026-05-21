@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { Link } from "react-router-dom";
+import { ProductLink } from "../components/ProductPopup";
 import { useQuery } from "@tanstack/react-query";
 
 import { insightsApi, watchlistApi } from "../lib/api";
@@ -10,6 +10,7 @@ import FavoriteButton from "../components/FavoriteButton";
 import SortableTable, { useSort, Column } from "../components/SortableTable";
 import ProductContextMenu, { useContextMenu } from "../components/ProductContextMenu";
 import TrackedOnlyToggle from "../components/TrackedOnlyToggle";
+import RowLimitSelect, { useRowLimit } from "../components/RowLimitSelect";
 
 export default function Closeouts() {
   const { distributor } = useDistributor();
@@ -17,6 +18,7 @@ export default function Closeouts() {
   const [minPct, setMinPct] = useState(0);
   const [daysFilter, setDaysFilter] = useState<"" | "new" | "aging">("");
   const [trackedOnly, setTrackedOnly] = useState(false);
+  const { limit: rowLimit, setLimit: setRowLimit } = useRowLimit(100);
 
   const { sort, toggle, sorted } = useSort<CloseoutRow>({ key: "pct_off", direction: "desc" });
   const ctx = useContextMenu();
@@ -80,7 +82,7 @@ export default function Closeouts() {
       sortable: true,
       sortValue: (r) => r.code,
       render: (r) => (
-        <Link to={`/catalog/${r.code}`} className="font-mono text-xs text-brand-navy hover:text-brand-orange hover:underline">{r.code}</Link>
+        <ProductLink code={r.code} distributor={distributor}>{r.code}</ProductLink>
       ),
     },
     {
@@ -153,6 +155,7 @@ export default function Closeouts() {
   ];
 
   const sortedRows = useMemo(() => sorted(filteredRows, columns), [filteredRows, sorted, columns]);
+  const displayedRows = useMemo(() => sortedRows.slice(0, rowLimit), [sortedRows, rowLimit]);
 
   return (
     <div className="space-y-5">
@@ -204,15 +207,18 @@ export default function Closeouts() {
         {q.isLoading ? (
           <div className="text-center py-12 text-zinc-500">Loading...</div>
         ) : (
-          <SortableTable
-            columns={columns}
-            data={sortedRows}
-            sort={sort}
-            onSort={toggle}
-            rowKey={(r) => r.code}
-            emptyMessage="No closeouts match your filters."
-            onRowContextMenu={(e, r) => ctx.handleContextMenu(e, r.code, distributor)}
-          />
+          <>
+            <SortableTable
+              columns={columns}
+              data={displayedRows}
+              sort={sort}
+              onSort={toggle}
+              rowKey={(r) => r.code}
+              emptyMessage="No closeouts match your filters."
+              onRowContextMenu={(e, r) => ctx.handleContextMenu(e, r.code, distributor)}
+            />
+            <RowLimitSelect total={sortedRows.length} limit={rowLimit} onChange={setRowLimit} />
+          </>
         )}
       </div>
       <ProductContextMenu target={ctx.target} onClose={ctx.close} isFavorite={ctx.target ? favCodes.has(ctx.target.code) : false} />

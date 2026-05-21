@@ -359,7 +359,14 @@ def missed_opportunities(
     expiring partials, and top discount-% RIPs they're ignoring.
     """
     today = date.today()
-    edition = _current_edition(session, distributor)
+    try:
+        edition = _current_edition(session, distributor)
+    except HTTPException:
+        return MissedOpportunitiesResponse(
+            total=0, rows=[],
+            summary={"by_type": {}, "total_rip_savings_missed": "0",
+                     "closeout_count": 0, "expiring_partials": 0},
+        )
 
     # Get tracked product IDs
     default_wl = session.execute(
@@ -562,8 +569,15 @@ def order_scorecard(
     Scores: RIP capture rate, tier optimization, closeout awareness,
     category diversification, price-timing quality.
     """
-    edition = _current_edition(session, distributor)
-    edition_ids = _current_edition_ids(session, "all")
+    try:
+        edition = _current_edition(session, distributor)
+        edition_ids = _current_edition_ids(session, "all")
+    except HTTPException:
+        return OrderScorecardResponse(
+            overall_grade="—", overall_score=0, metrics=[],
+            recommendations=["No price book data available for this distributor yet."],
+            summary={},
+        )
 
     # Get tracked items
     default_wl = session.execute(

@@ -6,6 +6,7 @@ import type { ComboRow } from "../lib/api";
 import { useDistributor } from "../lib/distributor";
 import { money } from "../lib/fmt";
 import SortableTable, { useSort, Column } from "../components/SortableTable";
+import RowLimitSelect, { useRowLimit } from "../components/RowLimitSelect";
 
 const columns: Column<ComboRow>[] = [
   {
@@ -53,6 +54,7 @@ export default function Combos() {
   const { distributor } = useDistributor();
   const [search, setSearch] = useState("");
   const [selectedCat, setSelectedCat] = useState("");
+  const { limit: rowLimit, setLimit: setRowLimit } = useRowLimit(100);
 
   const { sort, toggle, sorted } = useSort<ComboRow>({ key: "sku", direction: "asc" });
 
@@ -77,6 +79,7 @@ export default function Combos() {
 
   const rows = combosQ.data ?? [];
   const sortedRows = useMemo(() => sorted(rows, columns), [rows, sorted]);
+  const displayedRows = useMemo(() => sortedRows.slice(0, rowLimit), [sortedRows, rowLimit]);
 
   return (
     <div className="space-y-5">
@@ -113,14 +116,17 @@ export default function Combos() {
         {combosQ.isLoading ? (
           <div className="text-center py-12 text-zinc-500">Loading...</div>
         ) : (
-          <SortableTable
-            columns={columns}
-            data={sortedRows}
-            sort={sort}
-            onSort={toggle}
-            rowKey={(r) => r.sku}
-            emptyMessage="No combos found."
-          />
+          <>
+            <SortableTable
+              columns={columns}
+              data={displayedRows}
+              sort={sort}
+              onSort={toggle}
+              rowKey={(r) => r.sku}
+              emptyMessage="No combos found."
+            />
+            <RowLimitSelect total={sortedRows.length} limit={rowLimit} onChange={setRowLimit} />
+          </>
         )}
       </div>
     </div>

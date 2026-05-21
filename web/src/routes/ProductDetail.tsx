@@ -446,10 +446,10 @@ function PriceBreakdownTable({
               const isDown = delta && delta.diff < 0;
               const isUp = delta && delta.diff > 0;
               return (
-                <tr key={`${dp.year}-${dp.month}`} className={i === data.length - 1 ? "bg-blue-50/40" : ""}>
+                <tr key={`${dp.year}-${dp.month}`} className={dp.year === new Date().getFullYear() && dp.month === new Date().getMonth() + 1 ? "bg-blue-50/40" : ""}>
                   <td className="px-3 py-1.5 font-medium text-zinc-800 whitespace-nowrap">
                     {dp.edition_label}
-                    {i === data.length - 1 && (
+                    {dp.year === new Date().getFullYear() && dp.month === new Date().getMonth() + 1 && (
                       <span className="ml-1.5 text-[9px] font-semibold uppercase text-brand-orange">Current</span>
                     )}
                   </td>
