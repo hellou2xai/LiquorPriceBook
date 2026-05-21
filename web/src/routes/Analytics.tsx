@@ -683,9 +683,24 @@ export default function Analytics() {
     <div className="space-y-5">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
         <div>
-          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-brand-navy">Pricing Analytics</h1>
+          {activeView && (
+            <button
+              onClick={() => { setActiveView(null); clearFilters(); }}
+              className="inline-flex items-center gap-1 text-xs text-zinc-500 hover:text-brand-navy transition-colors mb-1"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+              </svg>
+              Back to all views
+            </button>
+          )}
+          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-brand-navy">
+            {activeView ? VIEWS.find((v) => v.view === activeView)?.label ?? "Pricing Analytics" : "Pricing Analytics"}
+          </h1>
           <p className="text-sm text-zinc-500 mt-1">
-            {distMode === "compare" ? "Cross-distributor comparison." : "Compare pricing across editions."}
+            {activeView
+              ? VIEWS.find((v) => v.view === activeView)?.desc ?? ""
+              : distMode === "compare" ? "Cross-distributor comparison." : "Compare pricing across editions."}
           </p>
         </div>
         {data && (
@@ -747,17 +762,6 @@ export default function Analytics() {
       {/* Results */}
       {activeView && (
         <>
-          {/* Back button */}
-          <button
-            onClick={() => { setActiveView(null); clearFilters(); }}
-            className="inline-flex items-center gap-1.5 text-sm text-zinc-500 hover:text-brand-navy transition-colors"
-          >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-            </svg>
-            Back to all views
-          </button>
-
           {/* Stats bar (product views only) */}
           {stats && (
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
