@@ -13,6 +13,8 @@ Views (single distributor):
   new_products      -- products in current edition but not previous
   discontinued      -- products in previous edition but not current
   watchlist_movers  -- price changes on user's tracked products
+  buy_now_defer     -- buy now vs defer based on next edition comparison
+  shortlist_review  -- enriched analytics for tracked (watchlisted) products
 
 Cross-distributor views (distributor=all or specific):
   cross_category_compare  -- avg price per category per distributor
@@ -37,6 +39,8 @@ from lpb_core.db.models import (
     Category,
     Distributor,
     InventoryReduction,
+    PartialsPricing,
+    PartialsRip,
     Product,
     ProductEdition,
     ProductLink,
@@ -53,6 +57,7 @@ SINGLE_VIEWS = {
     "price_drops", "price_increases", "new_rips", "lost_rips",
     "best_value", "closeout_rip", "category_trends",
     "new_products", "discontinued", "watchlist_movers",
+    "buy_now_defer", "shortlist_review",
 }
 
 CROSS_VIEWS = {
@@ -173,6 +178,7 @@ class AnalyticsResponse(BaseModel):
     cross_rip_rows: list[CrossRipRow] = []
     cross_brand_rows: list[CrossBrandRow] = []
     cross_price_rows: list[CrossPriceRow] = []
+    chart_data: dict | None = None
     distributors: list[str] = []  # slugs involved
 
 
@@ -237,6 +243,39 @@ def _get_all_editions(session: Session):
         dist = pairs[0][1]
         result[slug] = (cur, prev, dist)
     return result
+
+
+def _get_next_edition(session: Session, slug: str = "nj-allied"):
+    """Return (current, next) where next is the first edition AFTER current."""
+    current_editions = session.execute(
+        select(BookEdition)
+        .join(Distributor, Distributor.id == BookEdition.distributor_id)
+        .where(Distributor.slug == slug, _not_future_filter())
+        .order_by(desc(BookEdition.year), desc(BookEdition.month),
+                  desc(BookEdition.created_at))
+        .limit(1)
+    ).scalars().all()
+    if not current_editions:
+        return None, None
+    current = current_editions[0]
+
+    next_ed = session.execute(
+        select(BookEdition)
+        .join(Distributor, Distributor.id == BookEdition.distributor_id)
+        .where(
+            Distributor.slug == slug,
+            or_(
+                BookEdition.year > current.year,
+                and_(BookEdition.year == current.year,
+                     BookEdition.month > current.month),
+            ),
+        )
+        .order_by(asc(BookEdition.year), asc(BookEdition.month),
+                  desc(BookEdition.created_at))
+        .limit(1)
+    ).scalar_one_or_none()
+
+    return current, next_ed
 
 
 def _label(ed: BookEdition) -> str:
@@ -904,6 +943,508 @@ def _watchlist_movers(session, current, previous, limit, user):
     )
 
 
+def _buy_now_no_future(session, current, limit, user):
+    """Fallback when no future edition exists — flag closeouts and expiring RIPs."""
+    today = date.today()
+
+    stmt = (
+        select(
+            Product.code,
+            ProductEdition.description,
+            ProductEdition.size,
+            ProductEdition.case_cost,
+            ProductEdition.divisions,
+            Category.display_name.label("category"),
+            Brand.display_name.label("brand"),
+            func.max(RipOffer.save_amount).label("best_save"),
+        )
+        .select_from(ProductEdition)
+        .join(Product, Product.id == ProductEdition.product_id)
+        .join(RipOffer, RipOffer.product_edition_id == ProductEdition.id)
+        .outerjoin(Category, Category.id == ProductEdition.category_id)
+        .outerjoin(Brand, Brand.id == ProductEdition.brand_id)
+        .where(ProductEdition.book_edition_id == current.id,
+               ProductEdition.case_cost.is_not(None))
+        .group_by(Product.code, ProductEdition.description, ProductEdition.size,
+                  ProductEdition.case_cost, ProductEdition.divisions,
+                  Category.display_name, Brand.display_name)
+        .order_by(desc(func.max(RipOffer.save_amount)))
+        .limit(limit)
+    )
+    rows = session.execute(stmt).all()
+
+    # Closeout product IDs for tagging
+    co_ids = set(session.execute(
+        select(InventoryReduction.product_id)
+        .where(InventoryReduction.book_edition_id == current.id)
+    ).scalars().all())
+
+    # Partials starting soon (within 30 days)
+    partial_pids = set(session.execute(
+        select(PartialsPricing.linked_product_id)
+        .where(
+            PartialsPricing.book_edition_id == current.id,
+            PartialsPricing.linked_product_id.is_not(None),
+            PartialsPricing.start_date <= today,
+            PartialsPricing.end_date >= today,
+        )
+    ).scalars().all())
+
+    result = []
+    signals = {"BUY_NOW": 0, "DEFER": 0, "HOLD": 0}
+    for r in rows:
+        pid = session.execute(
+            select(Product.id).where(Product.code == r.code)
+        ).scalar_one_or_none()
+        is_co = pid in co_ids if pid else False
+        has_partial = pid in partial_pids if pid else False
+
+        if is_co:
+            tag = "BUY_NOW"
+        elif has_partial:
+            tag = "DEFER"
+        else:
+            tag = "BUY_NOW"  # Has RIP, no future edition to compare
+        signals[tag] += 1
+
+        eff = max(0, float(r.case_cost or 0) - float(r.best_save or 0))
+        result.append(AnalyticsRow(
+            code=r.code, description=r.description, size=r.size,
+            brand=r.brand, category=r.category, divisions=r.divisions,
+            case_cost=_money(r.case_cost),
+            rip_save=_money(r.best_save),
+            effective_cost=_money(eff),
+            is_closeout=is_co,
+            tag=tag,
+        ))
+
+    return AnalyticsResponse(
+        view="buy_now_defer", edition_current=_label(current),
+        total=len(result), rows=result,
+        chart_data={
+            "signal_distribution": signals,
+            "price_direction": {"up": 0, "down": 0, "flat": len(result)},
+            "category_heatmap": [],
+            "top_savings": [],
+        },
+    )
+
+
+def _buy_now_defer(session, current, previous, limit, user):
+    """Compare current vs next edition to identify buy-now vs defer signals."""
+    dslug_row = session.execute(
+        select(Distributor.slug).where(Distributor.id == current.distributor_id)
+    ).scalar_one()
+    _, next_ed = _get_next_edition(session, dslug_row)
+
+    if next_ed is None:
+        return _buy_now_no_future(session, current, limit, user)
+
+    today = date.today()
+    NxtPE = aliased(ProductEdition, name="nxt_pe")
+
+    # Current products with optional next-edition match
+    stmt = (
+        select(
+            Product.code,
+            Product.id.label("product_id"),
+            ProductEdition.description,
+            ProductEdition.size,
+            ProductEdition.case_cost.label("cur_cost"),
+            NxtPE.case_cost.label("nxt_cost"),
+            ProductEdition.divisions,
+            Category.display_name.label("category"),
+            Brand.display_name.label("brand"),
+        )
+        .select_from(ProductEdition)
+        .join(Product, Product.id == ProductEdition.product_id)
+        .outerjoin(NxtPE, and_(
+            NxtPE.product_id == ProductEdition.product_id,
+            NxtPE.book_edition_id == next_ed.id,
+        ))
+        .outerjoin(Category, Category.id == ProductEdition.category_id)
+        .outerjoin(Brand, Brand.id == ProductEdition.brand_id)
+        .where(
+            ProductEdition.book_edition_id == current.id,
+            ProductEdition.case_cost.is_not(None),
+        )
+    )
+    rows = session.execute(stmt).all()
+
+    # RIP maps: product_id -> best save for current and next editions
+    def _rip_map(edition_id):
+        rips = session.execute(
+            select(
+                ProductEdition.product_id,
+                func.max(RipOffer.save_amount).label("best_save"),
+                func.min(RipOffer.tier_cases).label("min_tier"),
+            )
+            .join(RipOffer, RipOffer.product_edition_id == ProductEdition.id)
+            .where(ProductEdition.book_edition_id == edition_id)
+            .group_by(ProductEdition.product_id)
+        ).all()
+        return {r.product_id: (r.best_save, r.min_tier) for r in rips}
+
+    cur_rips = _rip_map(current.id)
+    nxt_rips = _rip_map(next_ed.id)
+
+    # Closeout IDs
+    co_ids = set(session.execute(
+        select(InventoryReduction.product_id)
+        .where(InventoryReduction.book_edition_id == current.id)
+    ).scalars().all())
+
+    # Partials with upcoming better pricing
+    partial_pids = set(session.execute(
+        select(PartialsPricing.linked_product_id)
+        .where(
+            PartialsPricing.book_edition_id.in_([current.id, next_ed.id]),
+            PartialsPricing.linked_product_id.is_not(None),
+            PartialsPricing.start_date > today,
+        )
+    ).scalars().all())
+
+    # Partials RIP upcoming
+    partial_rip_pids = set(session.execute(
+        select(PartialsRip.linked_product_id)
+        .where(
+            PartialsRip.book_edition_id.in_([current.id, next_ed.id]),
+            PartialsRip.linked_product_id.is_not(None),
+            PartialsRip.start_date > today,
+        )
+    ).scalars().all())
+
+    result = []
+    signals = {"BUY_NOW": 0, "DEFER": 0, "HOLD": 0}
+    cat_agg: dict[str, dict] = {}  # category -> {buy_now, defer, hold, pct_sum, cnt}
+    price_dir = {"up": 0, "down": 0, "flat": 0}
+    top_savings: list[dict] = []
+
+    for r in rows:
+        pid = r.product_id
+        cur_cost = float(r.cur_cost)
+        nxt_cost = float(r.nxt_cost) if r.nxt_cost is not None else None
+        is_co = pid in co_ids
+
+        has_cur_rip = pid in cur_rips
+        has_nxt_rip = pid in nxt_rips
+        has_partial = pid in partial_pids or pid in partial_rip_pids
+
+        # Compute price direction
+        pct = None
+        if nxt_cost is not None and cur_cost:
+            pct = round((nxt_cost - cur_cost) / cur_cost * 100, 1)
+            if nxt_cost > cur_cost:
+                price_dir["up"] += 1
+            elif nxt_cost < cur_cost:
+                price_dir["down"] += 1
+            else:
+                price_dir["flat"] += 1
+        else:
+            price_dir["flat"] += 1
+
+        # Signal logic
+        if is_co:
+            tag = "BUY_NOW"
+        elif has_cur_rip and not has_nxt_rip:
+            tag = "BUY_NOW"  # RIP expiring
+        elif not has_cur_rip and has_nxt_rip:
+            tag = "DEFER"  # New RIP coming
+        elif has_partial:
+            tag = "DEFER"  # Partial deal starting soon
+        elif pct is not None and pct > 2.0:
+            tag = "BUY_NOW"  # Price going up
+        elif pct is not None and pct < -2.0:
+            tag = "DEFER"  # Price going down
+        else:
+            tag = "HOLD"
+
+        signals[tag] += 1
+
+        # Category aggregation
+        cat = r.category or "Uncategorized"
+        if cat not in cat_agg:
+            cat_agg[cat] = {"buy_now": 0, "defer": 0, "hold": 0, "pct_sum": 0.0, "cnt": 0}
+        cat_agg[cat][tag.lower()] += 1
+        if pct is not None:
+            cat_agg[cat]["pct_sum"] += pct
+            cat_agg[cat]["cnt"] += 1
+
+        # Track savings opportunities for deferrals
+        if tag == "DEFER" and nxt_cost is not None and nxt_cost < cur_cost:
+            top_savings.append({
+                "code": r.code,
+                "description": r.description,
+                "current_cost": _money(cur_cost),
+                "next_cost": _money(nxt_cost),
+                "savings": _money(cur_cost - nxt_cost),
+            })
+
+        rip_info = cur_rips.get(pid)
+        rip_save = _money(rip_info[0]) if rip_info else None
+        rip_tier = str(rip_info[1]) if rip_info and rip_info[1] else None
+        eff = max(0, cur_cost - float(rip_info[0] or 0)) if rip_info else None
+
+        result.append(AnalyticsRow(
+            code=r.code, description=r.description, size=r.size,
+            brand=r.brand, category=r.category, divisions=r.divisions,
+            case_cost=_money(cur_cost),
+            prev_case_cost=_money(nxt_cost),  # repurposed as next month's cost
+            pct_change=pct,
+            rip_save=rip_save,
+            effective_cost=_money(eff) if eff is not None else None,
+            rip_tier=rip_tier,
+            is_closeout=is_co,
+            tag=tag,
+        ))
+
+    # Sort: BUY_NOW first, then DEFER, then HOLD; within each group by abs(pct)
+    tag_order = {"BUY_NOW": 0, "DEFER": 1, "HOLD": 2}
+    result.sort(key=lambda r: (tag_order.get(r.tag, 3), -(abs(r.pct_change or 0))))
+    result = result[:limit]
+
+    top_savings.sort(key=lambda x: float(x["savings"] or 0), reverse=True)
+
+    category_heatmap = [
+        {
+            "category": cat,
+            "buy_now": v["buy_now"], "defer": v["defer"], "hold": v["hold"],
+            "avg_pct": round(v["pct_sum"] / v["cnt"], 1) if v["cnt"] else 0.0,
+        }
+        for cat, v in sorted(cat_agg.items())
+    ]
+
+    return AnalyticsResponse(
+        view="buy_now_defer",
+        edition_current=_label(current),
+        edition_previous=_label(next_ed),
+        total=len(result),
+        rows=result,
+        chart_data={
+            "signal_distribution": signals,
+            "category_heatmap": category_heatmap,
+            "price_direction": price_dir,
+            "top_savings": top_savings[:20],
+        },
+    )
+
+
+def _shortlist_review(session, current, previous, limit, user):
+    """Enriched analytics for tracked (watchlisted) products with chart data."""
+    default_wl = session.execute(
+        select(Watchlist).where(
+            Watchlist.tenant_id == user["tenant_id"],
+            Watchlist.is_default == True,  # noqa: E712
+        )
+    ).scalar_one_or_none()
+
+    if default_wl is None:
+        return AnalyticsResponse(
+            view="shortlist_review", edition_current=_label(current), total=0,
+        )
+
+    wl_product_ids = (
+        select(WatchlistItem.product_id)
+        .where(WatchlistItem.watchlist_id == default_wl.id)
+    ).scalar_subquery()
+
+    PrevPE = aliased(ProductEdition, name="prev_pe")
+
+    if previous:
+        stmt = (
+            select(
+                Product.code,
+                Product.id.label("product_id"),
+                ProductEdition.description,
+                ProductEdition.size,
+                ProductEdition.case_cost.label("cur_cost"),
+                PrevPE.case_cost.label("prev_cost"),
+                ProductEdition.divisions,
+                Category.display_name.label("category"),
+                Brand.display_name.label("brand"),
+            )
+            .select_from(ProductEdition)
+            .join(Product, Product.id == ProductEdition.product_id)
+            .outerjoin(PrevPE, and_(
+                PrevPE.product_id == ProductEdition.product_id,
+                PrevPE.book_edition_id == previous.id,
+            ))
+            .outerjoin(Category, Category.id == ProductEdition.category_id)
+            .outerjoin(Brand, Brand.id == ProductEdition.brand_id)
+            .where(
+                ProductEdition.book_edition_id == current.id,
+                ProductEdition.product_id.in_(wl_product_ids),
+                ProductEdition.case_cost.is_not(None),
+            )
+        )
+    else:
+        stmt = (
+            select(
+                Product.code,
+                Product.id.label("product_id"),
+                ProductEdition.description,
+                ProductEdition.size,
+                ProductEdition.case_cost.label("cur_cost"),
+                ProductEdition.divisions,
+                Category.display_name.label("category"),
+                Brand.display_name.label("brand"),
+            )
+            .select_from(ProductEdition)
+            .join(Product, Product.id == ProductEdition.product_id)
+            .outerjoin(Category, Category.id == ProductEdition.category_id)
+            .outerjoin(Brand, Brand.id == ProductEdition.brand_id)
+            .where(
+                ProductEdition.book_edition_id == current.id,
+                ProductEdition.product_id.in_(wl_product_ids),
+                ProductEdition.case_cost.is_not(None),
+            )
+        )
+
+    rows = session.execute(stmt).all()
+
+    # RIP map for current edition
+    rip_rows = session.execute(
+        select(
+            ProductEdition.product_id,
+            func.max(RipOffer.save_amount).label("best_save"),
+            func.min(RipOffer.tier_cases).label("min_tier"),
+        )
+        .join(RipOffer, RipOffer.product_edition_id == ProductEdition.id)
+        .where(
+            ProductEdition.book_edition_id == current.id,
+            ProductEdition.product_id.in_(wl_product_ids),
+        )
+        .group_by(ProductEdition.product_id)
+    ).all()
+    rip_map = {r.product_id: (r.best_save, r.min_tier) for r in rip_rows}
+
+    # Closeout IDs
+    co_ids = set(session.execute(
+        select(InventoryReduction.product_id)
+        .where(
+            InventoryReduction.book_edition_id == current.id,
+            InventoryReduction.product_id.in_(wl_product_ids),
+        )
+    ).scalars().all())
+
+    result = []
+    signals = {"BUY_NOW": 0, "GOOD_BUY": 0, "HOLD": 0, "DEFER": 0}
+    cat_signals: dict[str, dict] = {}
+    pct_buckets = {"< -10%": 0, "-10% to -5%": 0, "-5% to 0%": 0,
+                   "0%": 0, "0% to 5%": 0, "5% to 10%": 0, "> 10%": 0}
+    rip_count = 0
+    cat_spend: dict[str, float] = {}
+
+    for r in rows:
+        pid = r.product_id
+        cur_cost = float(r.cur_cost)
+        prev_cost = float(r.prev_cost) if hasattr(r, "prev_cost") and r.prev_cost else None
+        is_co = pid in co_ids
+        rip_info = rip_map.get(pid)
+        has_rip = rip_info is not None
+        if has_rip:
+            rip_count += 1
+
+        # Price change
+        pct = None
+        if prev_cost and prev_cost > 0:
+            pct = round((cur_cost - prev_cost) / prev_cost * 100, 1)
+
+        # Signal assignment
+        if is_co and has_rip:
+            tag = "BUY_NOW"
+        elif is_co:
+            tag = "BUY_NOW"
+        elif has_rip and pct is not None and pct < -2.0:
+            tag = "BUY_NOW"  # RIP + price drop
+        elif has_rip:
+            tag = "GOOD_BUY"
+        elif pct is not None and pct < -5.0:
+            tag = "GOOD_BUY"  # Significant price drop
+        elif pct is not None and pct > 5.0:
+            tag = "DEFER"  # Price went up significantly
+        else:
+            tag = "HOLD"
+
+        signals[tag] += 1
+
+        # Category tracking
+        cat = r.category or "Uncategorized"
+        if cat not in cat_signals:
+            cat_signals[cat] = {"BUY_NOW": 0, "GOOD_BUY": 0, "HOLD": 0, "DEFER": 0}
+        cat_signals[cat][tag] += 1
+        cat_spend[cat] = cat_spend.get(cat, 0.0) + cur_cost
+
+        # Price change histogram
+        if pct is None:
+            pct_buckets["0%"] += 1
+        elif pct < -10:
+            pct_buckets["< -10%"] += 1
+        elif pct < -5:
+            pct_buckets["-10% to -5%"] += 1
+        elif pct < 0:
+            pct_buckets["-5% to 0%"] += 1
+        elif pct == 0:
+            pct_buckets["0%"] += 1
+        elif pct < 5:
+            pct_buckets["0% to 5%"] += 1
+        elif pct < 10:
+            pct_buckets["5% to 10%"] += 1
+        else:
+            pct_buckets["> 10%"] += 1
+
+        rip_save = _money(rip_info[0]) if rip_info else None
+        rip_tier = str(rip_info[1]) if rip_info and rip_info[1] else None
+        eff = max(0, cur_cost - float(rip_info[0] or 0)) if rip_info else None
+
+        result.append(AnalyticsRow(
+            code=r.code, description=r.description, size=r.size,
+            brand=r.brand, category=r.category, divisions=r.divisions,
+            case_cost=_money(cur_cost),
+            prev_case_cost=_money(prev_cost),
+            pct_change=pct,
+            rip_save=rip_save,
+            effective_cost=_money(eff) if eff is not None else None,
+            rip_tier=rip_tier,
+            is_closeout=is_co,
+            tag=tag,
+        ))
+
+    # Sort by signal priority, then pct change
+    tag_order = {"BUY_NOW": 0, "GOOD_BUY": 1, "HOLD": 2, "DEFER": 3}
+    result.sort(key=lambda r: (tag_order.get(r.tag, 4), -(abs(r.pct_change or 0))))
+    result = result[:limit]
+
+    total_tracked = len(rows)
+    category_heatmap = [
+        {"category": cat, **counts}
+        for cat, counts in sorted(cat_signals.items())
+    ]
+    category_spend = [
+        {"category": cat, "total_cost": _money(v)}
+        for cat, v in sorted(cat_spend.items(), key=lambda x: x[1], reverse=True)
+    ]
+
+    return AnalyticsResponse(
+        view="shortlist_review",
+        edition_current=_label(current),
+        edition_previous=_label(previous) if previous else None,
+        total=len(result),
+        rows=result,
+        chart_data={
+            "signal_summary": signals,
+            "category_heatmap": category_heatmap,
+            "price_change_distribution": pct_buckets,
+            "rip_coverage": {
+                "with_rip": rip_count,
+                "without_rip": total_tracked - rip_count,
+                "pct": round(rip_count / total_tracked * 100, 1) if total_tracked else 0,
+            },
+            "category_spend": category_spend,
+        },
+    )
+
+
 # -- Cross-distributor view handlers -----------------------------------------
 
 def _cross_category_compare(session: Session, limit: int, user: dict):
@@ -1257,6 +1798,8 @@ _SINGLE_HANDLERS = {
     "new_products": _new_products,
     "discontinued": _discontinued,
     "watchlist_movers": _watchlist_movers,
+    "buy_now_defer": _buy_now_defer,
+    "shortlist_review": _shortlist_review,
 }
 
 _CROSS_HANDLERS = {

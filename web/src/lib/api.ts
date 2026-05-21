@@ -740,6 +740,8 @@ export type AnalyticsResponse = {
   cross_brand_rows: CrossBrandRow[];
   cross_price_rows: CrossPriceRow[];
   distributors: string[];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  chart_data: Record<string, any> | null;
 };
 
 export type AnalyticsView =
@@ -753,6 +755,8 @@ export type AnalyticsView =
   | "new_products"
   | "discontinued"
   | "watchlist_movers"
+  | "buy_now_defer"
+  | "shortlist_review"
   | "cross_category_compare"
   | "cross_rip_coverage"
   | "cross_brand_availability"

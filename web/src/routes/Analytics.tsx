@@ -8,6 +8,10 @@ import {
 } from "../lib/api";
 import SortableTable, { useSort, type Column } from "../components/SortableTable";
 import FavoriteButton from "../components/FavoriteButton";
+import {
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
+  PieChart, Pie, Legend,
+} from "recharts";
 
 // -- View definitions --------------------------------------------------------
 
@@ -32,6 +36,8 @@ const VIEWS: ViewCard[] = [
   { view: "new_products", label: "New Products", desc: "Products added this edition", icon: "+", color: "bg-lime-50 border-lime-200 text-lime-700", group: "single" },
   { view: "discontinued", label: "Discontinued", desc: "Products removed from catalog", icon: "x", color: "bg-stone-50 border-stone-200 text-stone-700", group: "single" },
   { view: "watchlist_movers", label: "Tracked Movers", desc: "Price changes on tracked products", icon: "★", color: "bg-yellow-50 border-yellow-200 text-yellow-700", group: "single" },
+  { view: "buy_now_defer", label: "Buy Now vs Defer", desc: "Compare current vs next month — find timing deals", icon: "⏱", color: "bg-gradient-to-br from-emerald-50 to-amber-50 border-emerald-300 text-emerald-800", group: "single" },
+  { view: "shortlist_review", label: "Shortlist Review", desc: "Deep analytics on your tracked products", icon: "📊", color: "bg-gradient-to-br from-violet-50 to-blue-50 border-violet-300 text-violet-800", group: "single" },
   // Cross-distributor views
   { view: "cross_category_compare", label: "Category Compare", desc: "Avg price per category across distributors", icon: "⇔", color: "bg-indigo-50 border-indigo-200 text-indigo-700", group: "cross" },
   { view: "cross_rip_coverage", label: "RIP Coverage", desc: "RIP offer coverage comparison by category", icon: "%", color: "bg-teal-50 border-teal-200 text-teal-700", group: "cross" },
@@ -42,10 +48,11 @@ const VIEWS: ViewCard[] = [
 const SINGLE_VIEWS = VIEWS.filter((v) => v.group === "single");
 const CROSS_VIEWS_LIST = VIEWS.filter((v) => v.group === "cross");
 
-const PCT_VIEWS = new Set<AnalyticsView>(["price_drops", "price_increases", "watchlist_movers", "best_value"]);
-const COMPARISON_VIEWS = new Set<AnalyticsView>(["price_drops", "price_increases", "watchlist_movers", "best_value"]);
-const RIP_VIEWS = new Set<AnalyticsView>(["new_rips", "lost_rips", "best_value", "closeout_rip"]);
+const PCT_VIEWS = new Set<AnalyticsView>(["price_drops", "price_increases", "watchlist_movers", "best_value", "buy_now_defer", "shortlist_review"]);
+const COMPARISON_VIEWS = new Set<AnalyticsView>(["price_drops", "price_increases", "watchlist_movers", "best_value", "buy_now_defer", "shortlist_review"]);
+const RIP_VIEWS = new Set<AnalyticsView>(["new_rips", "lost_rips", "best_value", "closeout_rip", "buy_now_defer", "shortlist_review"]);
 const CROSS_VIEW_SET = new Set<AnalyticsView>(["cross_category_compare", "cross_rip_coverage", "cross_brand_availability", "cross_price_compare"]);
+const CHART_VIEWS = new Set<AnalyticsView>(["buy_now_defer", "shortlist_review"]);
 
 type DistMode = "allied" | "fedway" | "all" | "compare";
 
@@ -111,9 +118,10 @@ function makeProductColumns(
   );
 
   if (showComparison) {
+    const isBuyDefer = activeView === "buy_now_defer";
     cols.push(
       {
-        key: "prev_case_cost", label: "Prev $", sortable: true, align: "right" as const, hideBelow: "md",
+        key: "prev_case_cost", label: isBuyDefer ? "Next $" : "Prev $", sortable: true, align: "right" as const, hideBelow: "md",
         render: (r) => r.prev_case_cost ? <span className="font-mono text-xs text-zinc-400">${r.prev_case_cost}</span> : <span className="text-zinc-300">—</span>,
         sortValue: (r) => (r.prev_case_cost ? parseFloat(r.prev_case_cost) : 0),
       },
@@ -153,8 +161,19 @@ function makeProductColumns(
   }
 
   cols.push({
-    key: "tag", label: "Tag", sortable: false, hideBelow: "lg",
-    render: (r) => r.tag ? <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-brand-navy/5 border border-brand-navy/10 text-brand-navy">{r.tag}</span> : null,
+    key: "tag", label: activeView && CHART_VIEWS.has(activeView) ? "Signal" : "Tag", sortable: true, hideBelow: "lg",
+    render: (r) => {
+      if (!r.tag) return null;
+      const signalStyle = SIGNAL_BG[r.tag];
+      if (signalStyle) {
+        return <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold border ${signalStyle}`}>{r.tag.replace("_", " ")}</span>;
+      }
+      return <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-brand-navy/5 border border-brand-navy/10 text-brand-navy">{r.tag}</span>;
+    },
+    sortValue: (r) => {
+      const rank: Record<string, number> = { BUY_NOW: 0, GOOD_BUY: 1, HOLD: 2, DEFER: 3 };
+      return rank[r.tag ?? ""] ?? 4;
+    },
   });
 
   return cols;
@@ -253,6 +272,310 @@ function crossPriceColumns(data: CrossPriceRow[]): Column<CrossPriceRow>[] {
       sortValue: (r) => r.cheaper ?? "",
     },
   ];
+}
+
+// -- Signal colors -----------------------------------------------------------
+
+const SIGNAL_COLORS: Record<string, string> = {
+  BUY_NOW: "#059669",   // emerald-600
+  GOOD_BUY: "#0891b2",  // cyan-600
+  HOLD: "#71717a",      // zinc-500
+  DEFER: "#d97706",     // amber-600
+};
+
+const SIGNAL_BG: Record<string, string> = {
+  BUY_NOW: "bg-emerald-100 text-emerald-800 border-emerald-300",
+  GOOD_BUY: "bg-cyan-100 text-cyan-800 border-cyan-300",
+  HOLD: "bg-zinc-100 text-zinc-700 border-zinc-300",
+  DEFER: "bg-amber-100 text-amber-800 border-amber-300",
+};
+
+// -- Chart panels for Buy Now / Defer & Shortlist Review --------------------
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function SignalDistributionChart({ chartData }: { chartData: Record<string, any> }) {
+  const dist = chartData?.signal_distribution ?? chartData?.signal_summary;
+  if (!dist) return null;
+  const pieData = Object.entries(dist).map(([name, value]) => ({ name, value: value as number }));
+  if (pieData.every((d) => d.value === 0)) return null;
+
+  return (
+    <div className="bg-white border border-zinc-200 rounded-xl shadow-sm p-4">
+      <h3 className="text-sm font-semibold text-zinc-700 mb-3">Signal Distribution</h3>
+      <div className="flex items-center gap-6">
+        <div className="w-48 h-48">
+          <ResponsiveContainer>
+            <PieChart>
+              <Pie data={pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={70} label={(e) => e.value > 0 ? `${e.name}: ${e.value}` : ""} labelLine={false} fontSize={10}>
+                {pieData.map((d) => <Cell key={d.name} fill={SIGNAL_COLORS[d.name] ?? "#94a3b8"} />)}
+              </Pie>
+              <Tooltip />
+            </PieChart>
+          </ResponsiveContainer>
+        </div>
+        <div className="flex flex-col gap-2">
+          {pieData.filter((d) => d.value > 0).map((d) => (
+            <div key={d.name} className="flex items-center gap-2">
+              <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold border ${SIGNAL_BG[d.name] ?? "bg-zinc-100"}`}>{d.name.replace("_", " ")}</span>
+              <span className="text-sm font-medium text-zinc-600">{d.value} products</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function CategoryHeatmap({ chartData }: { chartData: Record<string, any> }) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const heatmap: any[] = chartData?.category_heatmap;
+  if (!heatmap || heatmap.length === 0) return null;
+
+  // Normalize keys — backend may send buy_now or BUY_NOW
+  const norm = heatmap.map((h) => ({
+    category: h.category as string,
+    buy_now: (h.buy_now ?? h.BUY_NOW ?? 0) as number,
+    good_buy: (h.good_buy ?? h.GOOD_BUY ?? 0) as number,
+    defer: (h.defer ?? h.DEFER ?? 0) as number,
+    hold: (h.hold ?? h.HOLD ?? 0) as number,
+    avg_pct: (h.avg_pct ?? 0) as number,
+  }));
+  const hasGoodBuy = norm.some((h) => h.good_buy > 0);
+
+  const maxCount = Math.max(...norm.flatMap((h) => [h.buy_now, h.defer, h.hold, h.good_buy]), 1);
+  const cellBg = (val: number, r: number, g: number, b: number) => {
+    const a = val > 0 ? Math.min(val / maxCount, 1) * 0.6 + 0.1 : 0.05;
+    return `rgba(${r},${g},${b},${a})`;
+  };
+
+  return (
+    <div className="bg-white border border-zinc-200 rounded-xl shadow-sm p-4 overflow-x-auto">
+      <h3 className="text-sm font-semibold text-zinc-700 mb-3">Category Heatmap</h3>
+      <table className="w-full text-xs">
+        <thead>
+          <tr className="border-b border-zinc-200">
+            <th className="text-left py-1.5 px-2 font-medium text-zinc-500">Category</th>
+            <th className="text-center py-1.5 px-2 font-medium text-emerald-600">Buy Now</th>
+            {hasGoodBuy && <th className="text-center py-1.5 px-2 font-medium text-cyan-600">Good Buy</th>}
+            <th className="text-center py-1.5 px-2 font-medium text-amber-600">Defer</th>
+            <th className="text-center py-1.5 px-2 font-medium text-zinc-500">Hold</th>
+            <th className="text-right py-1.5 px-2 font-medium text-zinc-500">Avg % Change</th>
+          </tr>
+        </thead>
+        <tbody>
+          {norm.map((h) => (
+            <tr key={h.category} className="border-b border-zinc-50">
+              <td className="py-1.5 px-2 font-medium text-zinc-700">{h.category}</td>
+              <td className="py-1 px-2 text-center">
+                <span className="inline-block min-w-[28px] rounded px-1.5 py-0.5 font-semibold" style={{ backgroundColor: cellBg(h.buy_now, 5, 150, 105), color: h.buy_now > 0 ? "#065f46" : "#a1a1aa" }}>{h.buy_now}</span>
+              </td>
+              {hasGoodBuy && (
+                <td className="py-1 px-2 text-center">
+                  <span className="inline-block min-w-[28px] rounded px-1.5 py-0.5 font-semibold" style={{ backgroundColor: cellBg(h.good_buy, 8, 145, 178), color: h.good_buy > 0 ? "#155e75" : "#a1a1aa" }}>{h.good_buy}</span>
+                </td>
+              )}
+              <td className="py-1 px-2 text-center">
+                <span className="inline-block min-w-[28px] rounded px-1.5 py-0.5 font-semibold" style={{ backgroundColor: cellBg(h.defer, 217, 119, 6), color: h.defer > 0 ? "#92400e" : "#a1a1aa" }}>{h.defer}</span>
+              </td>
+              <td className="py-1 px-2 text-center">
+                <span className="inline-block min-w-[28px] rounded px-1.5 py-0.5 font-semibold" style={{ backgroundColor: cellBg(h.hold, 113, 113, 122), color: h.hold > 0 ? "#3f3f46" : "#a1a1aa" }}>{h.hold}</span>
+              </td>
+              <td className="py-1.5 px-2 text-right">
+                <span className={`font-medium ${h.avg_pct < 0 ? "text-emerald-600" : h.avg_pct > 0 ? "text-red-600" : "text-zinc-500"}`}>
+                  {h.avg_pct > 0 ? "+" : ""}{h.avg_pct.toFixed(1)}%
+                </span>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function PriceDirectionChart({ chartData, viewType }: { chartData: Record<string, any>; viewType?: string }) {
+  // For buy_now_defer: simple up/down/flat
+  // For shortlist_review: histogram buckets
+  if (viewType === "shortlist_review") {
+    const buckets: Record<string, number> = chartData?.price_change_distribution;
+    if (!buckets) return null;
+    const order = ["< -10%", "-10% to -5%", "-5% to 0%", "0%", "0% to 5%", "5% to 10%", "> 10%"];
+    const barData = order.map((name) => ({
+      name,
+      count: buckets[name] ?? 0,
+      fill: name.startsWith("<") || name.startsWith("-") ? "#059669" : name === "0%" ? "#71717a" : "#ef4444",
+    }));
+    return (
+      <div className="bg-white border border-zinc-200 rounded-xl shadow-sm p-4">
+        <h3 className="text-sm font-semibold text-zinc-700 mb-3">Price Change Distribution</h3>
+        <ResponsiveContainer width="100%" height={200}>
+          <BarChart data={barData} margin={{ left: 5, right: 10, bottom: 5 }}>
+            <XAxis dataKey="name" tick={{ fontSize: 9 }} interval={0} angle={-20} textAnchor="end" height={40} />
+            <YAxis tick={{ fontSize: 11 }} />
+            <Tooltip formatter={(v) => [`${v} products`, "Count"]} />
+            <Bar dataKey="count" radius={[4, 4, 0, 0]}>
+              {barData.map((d, i) => <Cell key={i} fill={d.fill} />)}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+    );
+  }
+
+  const dir = chartData?.price_direction;
+  if (!dir) return null;
+  const barData = [
+    { name: "Price Up", count: dir.up ?? 0, fill: "#ef4444" },
+    { name: "Stable", count: dir.flat ?? 0, fill: "#71717a" },
+    { name: "Price Down", count: dir.down ?? 0, fill: "#059669" },
+  ];
+
+  return (
+    <div className="bg-white border border-zinc-200 rounded-xl shadow-sm p-4">
+      <h3 className="text-sm font-semibold text-zinc-700 mb-3">Price Direction (Next Month)</h3>
+      <ResponsiveContainer width="100%" height={180}>
+        <BarChart data={barData} layout="vertical" margin={{ left: 10, right: 20 }}>
+          <XAxis type="number" tick={{ fontSize: 11 }} />
+          <YAxis type="category" dataKey="name" tick={{ fontSize: 11 }} width={80} />
+          <Tooltip formatter={(v) => [`${v} products`, "Count"]} />
+          <Bar dataKey="count" radius={[0, 4, 4, 0]}>
+            {barData.map((d, i) => <Cell key={i} fill={d.fill} />)}
+          </Bar>
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function TopSavingsChart({ chartData }: { chartData: Record<string, any> }) {
+  const items: { code: string; description: string; savings: string }[] = chartData?.top_savings;
+  if (!items || items.length === 0) return null;
+  const barData = items.slice(0, 10).map((s) => ({
+    name: s.description?.slice(0, 25) ?? s.code,
+    savings: Math.abs(parseFloat(s.savings)),
+  }));
+
+  return (
+    <div className="bg-white border border-zinc-200 rounded-xl shadow-sm p-4">
+      <h3 className="text-sm font-semibold text-zinc-700 mb-3">Top Defer Savings (per case)</h3>
+      <ResponsiveContainer width="100%" height={Math.max(200, barData.length * 28)}>
+        <BarChart data={barData} layout="vertical" margin={{ left: 10, right: 20 }}>
+          <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={(v) => `$${v}`} />
+          <YAxis type="category" dataKey="name" tick={{ fontSize: 10 }} width={140} />
+          <Tooltip formatter={(v) => [`$${v}`, "Savings"]} />
+          <Bar dataKey="savings" fill="#059669" radius={[0, 4, 4, 0]} />
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function ShortlistSummaryCards({ chartData, rows }: { chartData: Record<string, any>; rows: AnalyticsRow[] }) {
+  if (!chartData) return null;
+  const sig = chartData.signal_summary ?? {};
+  const rip = chartData.rip_coverage ?? {};
+  const totalItems = Object.values(sig).reduce((s: number, v) => s + (v as number), 0);
+  const closeoutCount = rows.filter((r) => r.is_closeout).length;
+  const totalRipSave = rows.reduce((s, r) => s + (r.rip_save ? parseFloat(r.rip_save) : 0), 0);
+
+  return (
+    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+      <div className="rounded-xl shadow-sm border border-zinc-200 bg-white px-3 py-2">
+        <div className="text-xs text-zinc-500">Tracked Items</div>
+        <div className="text-lg font-semibold text-brand-navy">{totalItems}</div>
+      </div>
+      <div className="rounded-xl shadow-sm border border-emerald-200 bg-emerald-50 px-3 py-2">
+        <div className="text-xs text-emerald-600">Buy Now</div>
+        <div className="text-lg font-semibold text-emerald-800">{(sig.BUY_NOW ?? 0) + (sig.GOOD_BUY ?? 0)}</div>
+      </div>
+      <div className="rounded-xl shadow-sm border border-amber-200 bg-amber-50 px-3 py-2">
+        <div className="text-xs text-amber-600">Defer</div>
+        <div className="text-lg font-semibold text-amber-800">{sig.DEFER ?? 0}</div>
+      </div>
+      <div className="rounded-xl shadow-sm border border-blue-200 bg-blue-50 px-3 py-2">
+        <div className="text-xs text-blue-600">With RIP</div>
+        <div className="text-lg font-semibold text-blue-800">{rip.with_rip ?? 0} <span className="text-xs font-normal">({rip.pct ?? 0}%)</span></div>
+      </div>
+      <div className="rounded-xl shadow-sm border border-violet-200 bg-violet-50 px-3 py-2">
+        <div className="text-xs text-violet-600">Total RIP Savings</div>
+        <div className="text-lg font-semibold text-violet-800">${totalRipSave.toFixed(2)}</div>
+      </div>
+      <div className="rounded-xl shadow-sm border border-fuchsia-200 bg-fuchsia-50 px-3 py-2">
+        <div className="text-xs text-fuchsia-600">Closeout Items</div>
+        <div className="text-lg font-semibold text-fuchsia-800">{closeoutCount}</div>
+      </div>
+    </div>
+  );
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function RipCoverageChart({ chartData }: { chartData: Record<string, any> }) {
+  const rip = chartData?.rip_coverage;
+  if (!rip) return null;
+  const pieData = [
+    { name: "With RIP", value: rip.with_rip ?? 0 },
+    { name: "No RIP", value: rip.without_rip ?? 0 },
+  ];
+  const colors = ["#059669", "#d4d4d8"];
+
+  return (
+    <div className="bg-white border border-zinc-200 rounded-xl shadow-sm p-4">
+      <h3 className="text-sm font-semibold text-zinc-700 mb-3">RIP Coverage ({rip.pct ?? 0}%)</h3>
+      <div className="flex items-center gap-4">
+        <div className="w-40 h-40">
+          <ResponsiveContainer>
+            <PieChart>
+              <Pie data={pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={35} outerRadius={60} label={(e) => e.value > 0 ? `${e.value}` : ""} fontSize={11}>
+                {pieData.map((_, i) => <Cell key={i} fill={colors[i]} />)}
+              </Pie>
+              <Tooltip />
+              <Legend wrapperStyle={{ fontSize: 11 }} />
+            </PieChart>
+          </ResponsiveContainer>
+        </div>
+        <div className="text-sm text-zinc-600">
+          <div><strong className="text-emerald-700">{rip.with_rip}</strong> products have RIP offers</div>
+          <div className="text-xs text-zinc-400 mt-1">{rip.without_rip} without RIP</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function ChartPanel({ activeView, chartData, rows }: { activeView: AnalyticsView | null; chartData: Record<string, any> | null; rows: AnalyticsRow[] }) {
+  if (!chartData || !activeView || !CHART_VIEWS.has(activeView)) return null;
+
+  if (activeView === "buy_now_defer") {
+    return (
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <SignalDistributionChart chartData={chartData} />
+        <PriceDirectionChart chartData={chartData} />
+        <CategoryHeatmap chartData={chartData} />
+        <TopSavingsChart chartData={chartData} />
+      </div>
+    );
+  }
+
+  if (activeView === "shortlist_review") {
+    return (
+      <div className="space-y-4">
+        <ShortlistSummaryCards chartData={chartData} rows={rows} />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <SignalDistributionChart chartData={chartData} />
+          <RipCoverageChart chartData={chartData} />
+          <CategoryHeatmap chartData={chartData} />
+          <PriceDirectionChart chartData={chartData} viewType="shortlist_review" />
+        </div>
+      </div>
+    );
+  }
+
+  return null;
 }
 
 // -- Main component ----------------------------------------------------------
@@ -450,6 +773,11 @@ export default function Analytics() {
                 </div>
               )}
             </div>
+          )}
+
+          {/* Charts for Buy Now / Defer & Shortlist Review */}
+          {data && !isLoading && CHART_VIEWS.has(activeView!) && (
+            <ChartPanel activeView={activeView} chartData={data.chart_data ?? null} rows={filteredRows} />
           )}
 
           {/* Filters */}
