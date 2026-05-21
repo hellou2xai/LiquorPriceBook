@@ -566,7 +566,10 @@ def watchlist_order(
                 target_case_price=r.target_case_price,
                 target_btl_price=r.target_btl_price,
                 distributor_slug=r.distributor_slug,
-                distributor_name=(r.distributor_name or "").split()[0] if r.distributor_name else None,
+                distributor_name=(
+                    (r.distributor_name or "").split()[0]
+                    if r.distributor_name else None
+                ),
                 notes=r.notes,
                 created_at=r.created_at,
             )
