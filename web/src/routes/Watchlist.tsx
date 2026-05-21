@@ -439,7 +439,16 @@ export default function Watchlist() {
       sortable: true,
       sortValue: (item) => item.product_code,
       render: (item) => (
-        <span className="text-xs font-mono text-zinc-500">{item.product_code}</span>
+        <div>
+          <span className="text-xs font-mono text-zinc-500">{item.product_code}</span>
+          {item.distributor_name && (
+            <div className={`text-[9px] font-semibold mt-0.5 ${
+              item.distributor_slug === "nj-fedway" ? "text-sky-600" : "text-brand-navy"
+            }`}>
+              {item.distributor_name}
+            </div>
+          )}
+        </div>
       ),
     },
     {

@@ -338,6 +338,9 @@ export type OrderItem = {
   effective_btl: string | null;
   rip_discount_pct: string | null;
   all_rips: RipTier[];
+  // Distributor
+  distributor_slug: string | null;
+  distributor_name: string | null;
   // Buy-timing intelligence
   prev_case_cost: string | null;
   price_pct_change: string | null;

@@ -104,6 +104,9 @@ class OrderItemOut(BaseModel):
     had_rip_prev: bool = False
     buy_signal: str = "HOLD"  # BUY_NOW, GOOD_BUY, HOLD, DEFER
     buy_reasons: list[str] = []
+    # Distributor
+    distributor_slug: str | None = None
+    distributor_name: str | None = None
     # User fields
     target_case_price: Decimal | None = None
     target_btl_price: Decimal | None = None
@@ -233,6 +236,8 @@ def watchlist_order(
             top_rip.save_amount.label("rip_save_amount"),
             top_rip.case_price.label("rip_case_price"),
             top_rip.btl_price.label("rip_btl_price"),
+            Distributor.slug.label("distributor_slug"),
+            Distributor.name.label("distributor_name"),
             WatchlistItem.target_case_price,
             WatchlistItem.target_btl_price,
             WatchlistItem.notes,
@@ -241,6 +246,7 @@ def watchlist_order(
         .select_from(WatchlistItem)
         .join(Watchlist, Watchlist.id == WatchlistItem.watchlist_id)
         .join(Product, Product.id == WatchlistItem.product_id)
+        .join(Distributor, Distributor.id == Product.distributor_id)
         .outerjoin(
             ProductEdition,
             and_(
@@ -559,6 +565,8 @@ def watchlist_order(
                 buy_reasons=reasons,
                 target_case_price=r.target_case_price,
                 target_btl_price=r.target_btl_price,
+                distributor_slug=r.distributor_slug,
+                distributor_name=(r.distributor_name or "").split()[0] if r.distributor_name else None,
                 notes=r.notes,
                 created_at=r.created_at,
             )

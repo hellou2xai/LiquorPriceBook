@@ -29,7 +29,6 @@ from lpb_core.db.models import (
     Distributor,
     InventoryReduction,
     PartialsPricing,
-    PartialsRip,
     Product,
     ProductEdition,
     RipOffer,
@@ -1308,7 +1307,6 @@ def buy_sheet(
         is_new_closeout = pid in new_closeout_pids
         price_dropped = cc_pct is not None and cc_pct < 0
         price_drop_pct = abs(cc_pct) if cc_pct and cc_pct < 0 else 0
-        price_rose = cc_pct is not None and cc_pct > 0
         price_rise_pct = cc_pct if cc_pct and cc_pct > 0 else 0
 
         # ---- Section 1: LAST CHANCE ----------------------------------------
@@ -1528,7 +1526,10 @@ def buy_sheet(
         for pc in price_change_map.values()
         if pc.get("case_cost_pct") is not None
     ]
-    avg_mkt_change = round(sum(all_pct_changes) / len(all_pct_changes), 2) if all_pct_changes else 0.0
+    avg_mkt_change = (
+        round(sum(all_pct_changes) / len(all_pct_changes), 2)
+        if all_pct_changes else 0.0
+    )
     if avg_mkt_change > 1:
         market_dir = "prices_rising"
     elif avg_mkt_change < -1:
