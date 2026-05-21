@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { aiApi, catalogApi, notesApi, ordersApi, priceHistoryApi, watchlistApi } from "../lib/api";
@@ -10,8 +10,10 @@ import RipRating from "../components/RipRating";
 
 export default function ProductDetail() {
   const { code = "" } = useParams<{ code: string }>();
+  const [searchParams] = useSearchParams();
   const qc = useQueryClient();
-  const { distributor } = useDistributor();
+  const { distributor: sidebarDistributor } = useDistributor();
+  const distributor = searchParams.get("d") || sidebarDistributor;
 
   const detailQ = useQuery({
     queryKey: ["product", code, distributor],
