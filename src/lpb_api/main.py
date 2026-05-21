@@ -19,6 +19,7 @@ from lpb_api.routes import ai as ai_routes
 from lpb_api.routes import analytics as analytics_routes
 from lpb_api.routes import auth as auth_routes
 from lpb_api.routes import catalog as catalog_routes
+from lpb_api.routes import decisions as decisions_routes
 from lpb_api.routes import ingest as ingest_routes
 from lpb_api.routes import insights as insights_routes
 from lpb_api.routes import orders as orders_routes
@@ -154,6 +155,7 @@ def readyz() -> dict:
 
 app.include_router(admin_links_routes.router)
 app.include_router(auth_routes.router)
+app.include_router(decisions_routes.router)
 app.include_router(ingest_routes.router)
 app.include_router(catalog_routes.router)
 app.include_router(watchlist_routes.router)

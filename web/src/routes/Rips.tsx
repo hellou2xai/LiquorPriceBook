@@ -7,6 +7,7 @@ import type { RipRow } from "../lib/api";
 import { useDistributor } from "../lib/distributor";
 import { money } from "../lib/fmt";
 import FavoriteButton from "../components/FavoriteButton";
+import RipRating from "../components/RipRating";
 import SortableTable, { useSort, Column } from "../components/SortableTable";
 
 export default function Rips() {
@@ -172,6 +173,13 @@ export default function Rips() {
         ) : (
           <span className="inline-flex items-center rounded-md bg-brand-orange/10 border border-brand-orange/20 px-1.5 py-0.5 text-xs text-brand-orange">rotating</span>
         ),
+    },
+    {
+      key: "rating",
+      label: "Rating",
+      sortable: false,
+      hideBelow: "lg",
+      render: (r) => <RipRating code={r.code} distributor={distributor} compact />,
     },
   ];
 

@@ -40,6 +40,7 @@ from sqlalchemy import (
     Integer,
     LargeBinary,
     Numeric,
+    SmallInteger,
     String,
     Text,
     UniqueConstraint,
@@ -926,6 +927,41 @@ class SalesRep(Base):
     )
 
 
+class RipRating(Base):
+    """Retailer thumbs-up/down rating on a RIP offer for a product+edition."""
+
+    __tablename__ = "rip_ratings"
+
+    id: Mapped[UUID] = _uuid_pk()
+    tenant_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True),
+        ForeignKey("tenants.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    user_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    product_id: Mapped[UUID] = mapped_column(
+        PgUUID(as_uuid=True),
+        ForeignKey("products.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    edition_label: Mapped[str] = mapped_column(String(8), nullable=False)
+    rating: Mapped[int] = mapped_column(SmallInteger, nullable=False)  # 1 or -1
+    comment: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = _now()
+    updated_at: Mapped[datetime] = _updated()
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "product_id", "edition_label",
+                         name="uq_rip_rating_user_product_edition"),
+        Index("ix_rip_ratings_product", "product_id", "edition_label"),
+        Index("ix_rip_ratings_tenant", "tenant_id"),
+    )
+
+
 __all__ = [
     # dims
     "Distributor", "Category", "Brand",
@@ -943,4 +979,6 @@ __all__ = [
     "AiVerdictCache", "LowConfidenceMatch",
     # sales
     "SalesRep",
+    # ratings
+    "RipRating",
 ]

@@ -5,6 +5,7 @@ import { aiApi, catalogApi, notesApi, priceHistoryApi, watchlistApi } from "../l
 import { money, pct, pctClass } from "../lib/fmt";
 import { useDistributor } from "../lib/distributor";
 import PriceChart from "../components/PriceChart";
+import RipRating from "../components/RipRating";
 
 export default function ProductDetail() {
   const { code = "" } = useParams<{ code: string }>();
@@ -153,8 +154,9 @@ export default function ProductDetail() {
       {/* Current RIPs */}
       {d.current_rips.length > 0 ? (
         <section className="rounded-xl shadow-sm border border-zinc-200 bg-white">
-          <header className="border-b border-zinc-200 px-4 py-2 text-sm font-medium text-brand-navy">
-            Current RIP tiers
+          <header className="border-b border-zinc-200 px-4 py-2 flex items-center justify-between">
+            <span className="text-sm font-medium text-brand-navy">Current RIP tiers</span>
+            <RipRating code={code} distributor={distributor} />
           </header>
           <table className="min-w-full text-sm">
             <thead className="bg-brand-tan text-xs uppercase text-brand-navy">

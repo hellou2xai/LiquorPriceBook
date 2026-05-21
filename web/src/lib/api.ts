@@ -834,3 +834,71 @@ export const salesRepsApi = {
   generateEmail: (orderId: string, repId?: string) =>
     api<EmailData>(`/api/v1/orders/${orderId}/email${_qs({ rep_id: repId })}`),
 };
+
+// ---------- Decision Support ----------
+
+export type RipRatingOut = {
+  product_code: string;
+  my_rating: number | null; // 1, -1, or null
+  my_comment: string | null;
+  thumbs_up: number;
+  thumbs_down: number;
+  score: number; // 0-100
+};
+
+export type MissedOpportunityRow = {
+  code: string;
+  description: string | null;
+  size: string | null;
+  brand: string | null;
+  category: string | null;
+  case_cost: string | null;
+  opportunity_type: string;
+  rip_save: string | null;
+  effective_cost: string | null;
+  rip_discount_pct: number | null;
+  closeout_pct_off: number | null;
+  days_remaining: number | null;
+  reason: string;
+  priority: number;
+  distributor_slug: string | null;
+};
+
+export type MissedOpportunitiesResponse = {
+  total: number;
+  rows: MissedOpportunityRow[];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  summary: Record<string, any>;
+};
+
+export type ScorecardMetric = {
+  label: string;
+  value: string;
+  max_value: string | null;
+  score: number;
+  color: string;
+};
+
+export type OrderScorecardResponse = {
+  overall_grade: string;
+  overall_score: number;
+  metrics: ScorecardMetric[];
+  recommendations: string[];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  summary: Record<string, any>;
+};
+
+export const decisionsApi = {
+  getRating: (productCode: string, distributor = "nj-allied") =>
+    api<RipRatingOut>(`/api/v1/rip-ratings${_qs({ product_code: productCode, distributor })}`),
+  getRatingsBulk: (codes: string[], distributor = "nj-allied") =>
+    api<Record<string, RipRatingOut>>(`/api/v1/rip-ratings/bulk${_qs({ codes: codes.join(","), distributor })}`),
+  rateRip: (body: { product_code: string; distributor?: string; rating: number; comment?: string }) =>
+    api<RipRatingOut>("/api/v1/rip-ratings", { method: "POST", json: body }),
+  deleteRating: (productCode: string, distributor = "nj-allied") =>
+    api<void>(`/api/v1/rip-ratings/${productCode}${_qs({ distributor })}`, { method: "DELETE" }),
+  missedOpportunities: (distributor = "nj-allied", limit = 100) =>
+    api<MissedOpportunitiesResponse>(`/api/v1/decisions/missed-opportunities${_qs({ distributor, limit })}`),
+  orderScorecard: (distributor = "nj-allied") =>
+    api<OrderScorecardResponse>(`/api/v1/decisions/order-scorecard${_qs({ distributor })}`),
+};
