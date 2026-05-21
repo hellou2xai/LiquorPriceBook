@@ -454,7 +454,86 @@ def _price_drops(session, current, previous, limit, user):
 
 
 def _price_increases(session, current, previous, limit, user):
-    return _price_changes(session, current, previous, limit, user, direction="increase")
+    """Compare current vs NEXT edition to show upcoming price increases.
+
+    Shows products whose price will go UP next month so the user can
+    buy now before the hike.  Falls back to previous-vs-current when
+    no future edition exists.
+    """
+    dslug_row = session.execute(
+        select(Distributor.slug).where(Distributor.id == current.distributor_id)
+    ).scalar_one()
+    _, next_ed = _get_next_edition(session, dslug_row)
+
+    if next_ed is None:
+        # No future edition — fall back to past-vs-present
+        return _price_changes(
+            session, current, previous, limit, user, direction="increase",
+        )
+
+    # Compare current (now) vs next (future)
+    NxtPE = aliased(ProductEdition, name="nxt_pe")
+
+    stmt = (
+        select(
+            Product.code,
+            ProductEdition.description,
+            ProductEdition.size,
+            ProductEdition.divisions,
+            ProductEdition.case_cost.label("cur_cost"),
+            NxtPE.case_cost.label("nxt_cost"),
+            Category.display_name.label("category"),
+            Brand.display_name.label("brand"),
+        )
+        .select_from(ProductEdition)
+        .join(Product, Product.id == ProductEdition.product_id)
+        .join(NxtPE, and_(
+            NxtPE.product_id == ProductEdition.product_id,
+            NxtPE.book_edition_id == next_ed.id,
+        ))
+        .outerjoin(Category, Category.id == ProductEdition.category_id)
+        .outerjoin(Brand, Brand.id == ProductEdition.brand_id)
+        .where(
+            ProductEdition.book_edition_id == current.id,
+            ProductEdition.case_cost.is_not(None),
+            NxtPE.case_cost.is_not(None),
+            NxtPE.case_cost > ProductEdition.case_cost,
+        )
+        .order_by(desc(
+            (NxtPE.case_cost - ProductEdition.case_cost)
+            / ProductEdition.case_cost
+        ))
+        .limit(limit)
+    )
+    rows = session.execute(stmt).all()
+
+    result_rows = []
+    for r in rows:
+        change = float(r.nxt_cost - r.cur_cost)
+        pct = (
+            round(change / float(r.cur_cost) * 100, 1)
+            if r.cur_cost else None
+        )
+        result_rows.append(AnalyticsRow(
+            code=r.code,
+            description=r.description,
+            size=r.size,
+            brand=r.brand,
+            category=r.category,
+            divisions=r.divisions,
+            case_cost=_money(r.cur_cost),
+            prev_case_cost=_money(r.nxt_cost),
+            pct_change=pct,
+            tag=f"\u2191 ${abs(change):.2f}",
+        ))
+
+    return AnalyticsResponse(
+        view="price_increases",
+        edition_current=_label(current),
+        edition_previous=_label(next_ed),
+        total=len(result_rows),
+        rows=result_rows,
+    )
 
 
 def _new_rips(session, current, previous, limit, user):

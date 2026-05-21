@@ -27,7 +27,7 @@ type ViewCard = {
 const VIEWS: ViewCard[] = [
   // Single-distributor views
   { view: "price_drops", label: "Price Drops", desc: "Biggest price decreases vs last edition", icon: "↓", color: "bg-emerald-50 border-emerald-200 text-emerald-700", group: "single" },
-  { view: "price_increases", label: "Price Increases", desc: "Biggest price increases — buy before next hike", icon: "↑", color: "bg-red-50 border-red-200 text-red-700", group: "single" },
+  { view: "price_increases", label: "Price Increases", desc: "Upcoming price hikes — buy now before next month's increase", icon: "↑", color: "bg-red-50 border-red-200 text-red-700", group: "single" },
   { view: "new_rips", label: "New RIPs", desc: "RIP offers added this month", icon: "$", color: "bg-blue-50 border-blue-200 text-blue-700", group: "single" },
   { view: "lost_rips", label: "Lost RIPs", desc: "RIP offers removed this month", icon: "!", color: "bg-amber-50 border-amber-200 text-amber-700", group: "single" },
   { view: "best_value", label: "Best Value", desc: "Lowest effective cost with RIP applied", icon: "*", color: "bg-violet-50 border-violet-200 text-violet-700", group: "single" },
@@ -118,10 +118,10 @@ function makeProductColumns(
   );
 
   if (showComparison) {
-    const isBuyDefer = activeView === "buy_now_defer";
+    const showNextLabel = activeView === "buy_now_defer" || activeView === "price_increases";
     cols.push(
       {
-        key: "prev_case_cost", label: isBuyDefer ? "Next $" : "Prev $", sortable: true, align: "right" as const, hideBelow: "md",
+        key: "prev_case_cost", label: showNextLabel ? "Next $" : "Prev $", sortable: true, align: "right" as const, hideBelow: "md",
         render: (r) => r.prev_case_cost ? <span className="font-mono text-xs text-zinc-400">${r.prev_case_cost}</span> : <span className="text-zinc-300">—</span>,
         sortValue: (r) => (r.prev_case_cost ? parseFloat(r.prev_case_cost) : 0),
       },
@@ -690,8 +690,13 @@ export default function Analytics() {
         </div>
         {data && (
           <div className="text-xs text-zinc-400">
-            {data.edition_current}
-            {data.edition_previous ? ` vs ${data.edition_previous}` : ""}
+            {activeView === "price_increases" && data.edition_previous
+              ? `Now (${data.edition_current}) → Next (${data.edition_previous})`
+              : <>
+                  {data.edition_current}
+                  {data.edition_previous ? ` vs ${data.edition_previous}` : ""}
+                </>
+            }
           </div>
         )}
       </div>
@@ -742,6 +747,17 @@ export default function Analytics() {
       {/* Results */}
       {activeView && (
         <>
+          {/* Back button */}
+          <button
+            onClick={() => { setActiveView(null); clearFilters(); }}
+            className="inline-flex items-center gap-1.5 text-sm text-zinc-500 hover:text-brand-navy transition-colors"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+            </svg>
+            Back to all views
+          </button>
+
           {/* Stats bar (product views only) */}
           {stats && (
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -837,7 +853,12 @@ export default function Analytics() {
                       {hasActiveFilters && !isCrossView && <> (filtered from {data.total})</>}
                     </span>
                   </h2>
-                  <span className="text-xs text-zinc-400">{data.edition_current}{data.edition_previous ? ` vs ${data.edition_previous}` : ""}</span>
+                  <span className="text-xs text-zinc-400">
+                    {activeView === "price_increases" && data.edition_previous
+                      ? `Now (${data.edition_current}) → Next (${data.edition_previous})`
+                      : <>{data.edition_current}{data.edition_previous ? ` vs ${data.edition_previous}` : ""}</>
+                    }
+                  </span>
                 </div>
 
                 {/* Cross-distributor tables */}
