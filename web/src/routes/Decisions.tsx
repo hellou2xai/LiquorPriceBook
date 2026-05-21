@@ -1,12 +1,17 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Link } from "react-router-dom";
 import { ProductLink } from "../components/ProductPopup";
 import { useQuery } from "@tanstack/react-query";
 import {
   decisionsApi,
+  watchlistApi,
+  type BuySheetItem,
+  type BuySheetSection,
+  type BuySheetResponse,
   type MissedOpportunityRow,
   type ScorecardMetric,
 } from "../lib/api";
+import { money } from "../lib/fmt";
 import { useDistributor } from "../lib/distributor";
 import SortableTable, { useSort, type Column } from "../components/SortableTable";
 import RowLimitSelect, { useRowLimit } from "../components/RowLimitSelect";
@@ -18,11 +23,351 @@ import {
   RadialBarChart, RadialBar, PolarAngleAxis,
 } from "recharts";
 
-// -- Tab type ----------------------------------------------------------------
+// ============================================================================
+// TABS
+// ============================================================================
 
-type Tab = "scorecard" | "missed";
+type Tab = "buysheet" | "scorecard" | "missed";
 
-// -- Scorecard gauge ---------------------------------------------------------
+// ============================================================================
+// SECTION ICON MAP
+// ============================================================================
+
+const SECTION_ICONS: Record<string, string> = {
+  fire: "\uD83D\uDD25",
+  star: "\u2B50",
+  check: "\u2705",
+  think: "\uD83E\uDD14",
+  pause: "\u23F8\uFE0F",
+  sparkle: "\u2728",
+};
+
+const SECTION_COLORS: Record<string, { bg: string; border: string; text: string; badge: string }> = {
+  last_chance: { bg: "bg-red-50", border: "border-red-200", text: "text-red-800", badge: "bg-red-100 text-red-800" },
+  strong_buy: { bg: "bg-emerald-50", border: "border-emerald-200", text: "text-emerald-800", badge: "bg-emerald-100 text-emerald-800" },
+  buy_now: { bg: "bg-blue-50", border: "border-blue-200", text: "text-blue-800", badge: "bg-blue-100 text-blue-800" },
+  consider: { bg: "bg-amber-50", border: "border-amber-200", text: "text-amber-800", badge: "bg-amber-100 text-amber-800" },
+  defer: { bg: "bg-zinc-50", border: "border-zinc-200", text: "text-zinc-600", badge: "bg-zinc-100 text-zinc-700" },
+  new_opportunities: { bg: "bg-violet-50", border: "border-violet-200", text: "text-violet-800", badge: "bg-violet-100 text-violet-800" },
+};
+
+const VERDICT_BADGES: Record<string, { label: string; cls: string }> = {
+  LAST_CHANCE: { label: "LAST CHANCE", cls: "bg-red-600 text-white" },
+  STRONG_BUY: { label: "STRONG BUY", cls: "bg-emerald-600 text-white" },
+  BUY_NOW: { label: "BUY NOW", cls: "bg-blue-600 text-white" },
+  CONSIDER: { label: "CONSIDER", cls: "bg-amber-500 text-white" },
+  DEFER: { label: "DEFER", cls: "bg-zinc-400 text-white" },
+  PASS: { label: "PASS", cls: "bg-zinc-300 text-zinc-700" },
+};
+
+// ============================================================================
+// BUY SHEET PANEL (main new feature)
+// ============================================================================
+
+function BuySheetPanel({ distributor }: { distributor: string }) {
+  const { data, isLoading, error } = useQuery({
+    queryKey: ["buy-sheet", distributor],
+    queryFn: () => decisionsApi.buySheet(distributor),
+  });
+
+  const wlQ = useQuery({ queryKey: ["watchlist"], queryFn: () => watchlistApi.list(), staleTime: 30_000 });
+  const favCodes = new Set((wlQ.data ?? []).map((w) => w.product_code));
+
+  const [activeSection, setActiveSection] = useState<string | null>(null);
+  const [trackedOnly, setTrackedOnly] = useState(false);
+  const ctx = useContextMenu();
+
+  if (isLoading) return <div className="p-12 text-center text-zinc-400">Analyzing market data...</div>;
+  if (error) return <div className="p-12 text-center text-red-500">{error instanceof Error ? error.message : "Failed to load"}</div>;
+  if (!data || data.sections.length === 0) {
+    return (
+      <div className="text-center py-16 text-zinc-400">
+        <p className="text-lg mb-2">No decision data available</p>
+        <p className="text-sm">Price book data is needed to generate recommendations.</p>
+      </div>
+    );
+  }
+
+  const sum = data.summary;
+
+  return (
+    <div className="space-y-6">
+      {/* Summary Banner */}
+      <SummaryBanner summary={sum} />
+
+      {/* Section Navigator */}
+      <div className="flex flex-wrap gap-2">
+        <button
+          onClick={() => setActiveSection(null)}
+          className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+            activeSection === null
+              ? "bg-brand-navy text-white shadow-sm"
+              : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200"
+          }`}
+        >
+          All Sections ({sum.total_items})
+        </button>
+        {data.sections.map((sec) => {
+          const colors = SECTION_COLORS[sec.key] ?? SECTION_COLORS.consider;
+          return (
+            <button
+              key={sec.key}
+              onClick={() => setActiveSection(activeSection === sec.key ? null : sec.key)}
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                activeSection === sec.key
+                  ? `${colors.badge} ring-2 ring-offset-1 ring-brand-navy`
+                  : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200"
+              }`}
+            >
+              {SECTION_ICONS[sec.icon] ?? ""} {sec.title} ({sec.count})
+            </button>
+          );
+        })}
+        <TrackedOnlyToggle active={trackedOnly} onChange={setTrackedOnly} />
+      </div>
+
+      {/* Sections */}
+      {data.sections
+        .filter((sec) => activeSection === null || sec.key === activeSection)
+        .map((sec) => (
+          <BuySheetSectionCard
+            key={sec.key}
+            section={sec}
+            favCodes={favCodes}
+            trackedOnly={trackedOnly}
+            ctx={ctx}
+          />
+        ))}
+
+      <ProductContextMenu
+        target={ctx.target}
+        onClose={ctx.close}
+        isFavorite={ctx.target ? favCodes.has(ctx.target.code) : false}
+      />
+    </div>
+  );
+}
+
+// -- Summary Banner ----------------------------------------------------------
+
+function SummaryBanner({ summary: s }: { summary: BuySheetResponse["summary"] }) {
+  const marketColor = s.market_direction === "prices_falling"
+    ? "text-emerald-700" : s.market_direction === "prices_rising"
+    ? "text-red-700" : "text-zinc-600";
+  const marketLabel = s.market_direction === "prices_falling"
+    ? "Prices Falling" : s.market_direction === "prices_rising"
+    ? "Prices Rising" : "Stable";
+
+  return (
+    <div className="bg-white rounded-xl border border-zinc-200 shadow-sm p-5">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-4">
+        <div>
+          <h2 className="text-lg font-bold text-brand-navy">Buy Sheet — {s.edition_label}</h2>
+          <p className="text-sm text-zinc-500">
+            {s.total_items} products analyzed across {s.total_closeouts} closeouts, {s.total_new_rips} new RIPs, {s.total_lost_rips} lost RIPs
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className={`text-sm font-semibold ${marketColor}`}>{marketLabel}</span>
+          <span className="text-xs text-zinc-400">({s.avg_market_change_pct > 0 ? "+" : ""}{s.avg_market_change_pct.toFixed(1)}%)</span>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
+        <StatCard label="Last Chance" value={s.total_last_chance} color="red" />
+        <StatCard label="Strong Buy" value={s.total_buy_now} color="emerald" />
+        <StatCard label="Consider" value={s.total_consider} color="amber" />
+        <StatCard label="Defer" value={s.total_defer} color="zinc" />
+        <StatCard label="New RIPs" value={s.total_new_rips} color="violet" />
+        <StatCard label="Lost RIPs" value={s.total_lost_rips} color="red" />
+        <StatCard label="RIP Savings" value={`$${s.potential_rip_savings}`} color="emerald" isText />
+      </div>
+    </div>
+  );
+}
+
+function StatCard({ label, value, color, isText }: {
+  label: string; value: number | string; color: string; isText?: boolean;
+}) {
+  const borderCls = `border-${color}-200`;
+  const bgCls = color === "zinc" ? "bg-zinc-50" : `bg-${color}-50`;
+  return (
+    <div className={`rounded-lg border ${borderCls} ${bgCls} px-3 py-2`}>
+      <div className="text-[10px] text-zinc-500 uppercase tracking-wide">{label}</div>
+      <div className={`${isText ? "text-sm" : "text-xl"} font-bold tabular-nums text-zinc-900`}>{value}</div>
+    </div>
+  );
+}
+
+// -- Section Card with Table -------------------------------------------------
+
+function BuySheetSectionCard({ section, favCodes, trackedOnly, ctx }: {
+  section: BuySheetSection;
+  favCodes: Set<string>;
+  trackedOnly: boolean;
+  ctx: ReturnType<typeof useContextMenu>;
+}) {
+  const colors = SECTION_COLORS[section.key] ?? SECTION_COLORS.consider;
+  const { sort, toggle, sorted } = useSort<BuySheetItem>({ key: "urgency", direction: "desc" });
+  const { limit: rowLimit, setLimit: setRowLimit } = useRowLimit(50);
+
+  const filteredItems = useMemo(
+    () => trackedOnly ? section.items.filter((i) => i.is_tracked) : section.items,
+    [section.items, trackedOnly],
+  );
+
+  const columns: Column<BuySheetItem>[] = useMemo(() => [
+    {
+      key: "fav", label: "", thClassName: "w-8",
+      render: (r) => <FavoriteButton code={r.code} distributor={r.distributor_slug ?? undefined} isFavorite={favCodes.has(r.code)} />,
+    },
+    {
+      key: "verdict", label: "Verdict", sortable: true,
+      render: (r) => {
+        const badge = VERDICT_BADGES[r.verdict] ?? VERDICT_BADGES.CONSIDER;
+        return <span className={`inline-block rounded-md px-2 py-0.5 text-[10px] font-bold ${badge.cls}`}>{badge.label}</span>;
+      },
+      sortValue: (r) => r.urgency,
+    },
+    {
+      key: "code", label: "Code", sortable: true,
+      render: (r) => (
+        <ProductLink code={r.code} distributor={r.distributor_slug ?? undefined}>
+          <span className="font-mono text-xs">{r.code}</span>
+        </ProductLink>
+      ),
+      sortValue: (r) => r.code,
+    },
+    {
+      key: "description", label: "Product", sortable: true,
+      render: (r) => (
+        <div>
+          <ProductLink code={r.code} distributor={r.distributor_slug ?? undefined}>
+            <span className="text-sm font-medium text-zinc-900 line-clamp-1">{r.description ?? "—"}</span>
+          </ProductLink>
+          {r.brand && <div className="text-[10px] text-zinc-400">{r.brand}</div>}
+        </div>
+      ),
+      sortValue: (r) => r.description ?? "",
+    },
+    {
+      key: "size", label: "Size", sortable: true, hideBelow: "md",
+      render: (r) => <span className="text-xs text-zinc-500">{r.size ?? "—"}</span>,
+      sortValue: (r) => r.size ?? "",
+    },
+    {
+      key: "case_cost", label: "Case $", sortable: true, align: "right",
+      render: (r) => (
+        <div className="text-right">
+          <div className="font-mono text-sm tabular-nums">{money(r.case_cost)}</div>
+          {r.prev_case_cost && (
+            <div className="text-[10px] text-zinc-400">was {money(r.prev_case_cost)}</div>
+          )}
+        </div>
+      ),
+      sortValue: (r) => r.case_cost ? parseFloat(r.case_cost) : 0,
+    },
+    {
+      key: "change", label: "Change", sortable: true, align: "right", hideBelow: "sm",
+      render: (r) => {
+        if (r.case_cost_pct == null) return <span className="text-zinc-300">—</span>;
+        const cls = r.case_cost_pct < 0 ? "text-emerald-600" : r.case_cost_pct > 0 ? "text-red-600" : "text-zinc-500";
+        return <span className={`text-xs font-medium ${cls}`}>{r.case_cost_pct > 0 ? "+" : ""}{r.case_cost_pct.toFixed(1)}%</span>;
+      },
+      sortValue: (r) => r.case_cost_pct ?? 0,
+    },
+    {
+      key: "rip", label: "RIP Save", sortable: true, align: "right",
+      render: (r) => {
+        if (!r.has_rip) return <span className="text-zinc-300">—</span>;
+        return (
+          <div className="text-right">
+            <div className="text-emerald-700 font-semibold text-sm tabular-nums">${r.best_rip_save}</div>
+            <div className="text-[10px] text-zinc-400">{r.best_rip_tier} ({r.rip_discount_pct?.toFixed(0)}%)</div>
+          </div>
+        );
+      },
+      sortValue: (r) => r.best_rip_save ? parseFloat(r.best_rip_save) : 0,
+    },
+    {
+      key: "signals", label: "Signals", sortable: false, hideBelow: "lg",
+      render: (r) => (
+        <div className="flex flex-wrap gap-1">
+          {r.at_12m_low && <SignalBadge text="12m Low" cls="bg-emerald-100 text-emerald-800" />}
+          {r.at_12m_high && <SignalBadge text="12m High" cls="bg-red-100 text-red-800" />}
+          {r.is_closeout && <SignalBadge text="Closeout" cls="bg-fuchsia-100 text-fuchsia-800" />}
+          {r.has_active_special && <SignalBadge text={`Special ${r.special_days_remaining}d`} cls="bg-sky-100 text-sky-800" />}
+          {r.rip_stable === false && <SignalBadge text="New RIP" cls="bg-violet-100 text-violet-800" />}
+          {r.rip_stable === true && <SignalBadge text="Stable RIP" cls="bg-zinc-100 text-zinc-600" />}
+          {r.price_trend === "falling" && <SignalBadge text="Falling" cls="bg-emerald-100 text-emerald-700" />}
+          {r.price_trend === "rising" && <SignalBadge text="Rising" cls="bg-red-100 text-red-700" />}
+        </div>
+      ),
+    },
+    {
+      key: "reasons", label: "Why", sortable: false,
+      render: (r) => (
+        <ul className="space-y-0.5">
+          {r.verdict_reasons.map((reason, i) => (
+            <li key={i} className="text-xs text-zinc-600 leading-snug">{reason}</li>
+          ))}
+        </ul>
+      ),
+    },
+  ], [favCodes]);
+
+  return (
+    <div className={`rounded-xl border ${colors.border} overflow-hidden shadow-sm`}>
+      {/* Section Header */}
+      <div className={`${colors.bg} px-5 py-3 border-b ${colors.border}`}>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="text-lg">{SECTION_ICONS[section.icon] ?? ""}</span>
+            <div>
+              <h3 className={`font-bold ${colors.text}`}>{section.title}</h3>
+              <p className="text-xs text-zinc-500">{section.subtitle}</p>
+            </div>
+          </div>
+          <span className={`rounded-full px-3 py-0.5 text-sm font-bold ${colors.badge}`}>
+            {filteredItems.length}
+          </span>
+        </div>
+      </div>
+
+      {/* Table */}
+      {filteredItems.length === 0 ? (
+        <div className="p-6 text-center text-zinc-400 text-sm">
+          {trackedOnly ? "No tracked items in this section" : "No items"}
+        </div>
+      ) : (
+        <>
+          <SortableTable
+            data={sorted(filteredItems, columns).slice(0, rowLimit)}
+            columns={columns}
+            sort={sort}
+            onSort={toggle}
+            rowKey={(r) => `${r.code}-${section.key}`}
+            emptyMessage="No items match."
+            onRowContextMenu={(e, r) => ctx.handleContextMenu(e, r.code, r.distributor_slug ?? undefined)}
+          />
+          <RowLimitSelect total={filteredItems.length} limit={rowLimit} onChange={setRowLimit} />
+        </>
+      )}
+    </div>
+  );
+}
+
+function SignalBadge({ text, cls }: { text: string; cls: string }) {
+  return (
+    <span className={`inline-block rounded-full px-1.5 py-0.5 text-[9px] font-semibold ${cls}`}>
+      {text}
+    </span>
+  );
+}
+
+// ============================================================================
+// SCORECARD PANEL (existing, kept)
+// ============================================================================
 
 function ScoreGauge({ score, grade }: { score: number; grade: string }) {
   const color = score >= 80 ? "#059669" : score >= 60 ? "#0891b2" : score >= 40 ? "#d97706" : "#ef4444";
@@ -50,8 +395,6 @@ function ScoreGauge({ score, grade }: { score: number; grade: string }) {
   );
 }
 
-// -- Metric bar --------------------------------------------------------------
-
 function MetricBar({ metric }: { metric: ScorecardMetric }) {
   const barColor = metric.color === "green" ? "#059669" : metric.color === "yellow" ? "#d97706" : "#ef4444";
   return (
@@ -73,8 +416,6 @@ function MetricBar({ metric }: { metric: ScorecardMetric }) {
   );
 }
 
-// -- Scorecard panel ---------------------------------------------------------
-
 function ScorecardPanel({ distributor }: { distributor: string }) {
   const { data, isLoading, error } = useQuery({
     queryKey: ["order-scorecard", distributor],
@@ -85,7 +426,7 @@ function ScorecardPanel({ distributor }: { distributor: string }) {
   if (error) return <div className="p-8 text-center text-red-500">{error instanceof Error ? error.message : "Failed"}</div>;
   if (!data) return null;
 
-  if (data.overall_grade === "—") {
+  if (data.overall_grade === "\u2014") {
     return (
       <div className="text-center py-12 text-zinc-400">
         <p className="text-lg mb-2">No items tracked yet</p>
@@ -98,7 +439,6 @@ function ScorecardPanel({ distributor }: { distributor: string }) {
 
   return (
     <div className="space-y-6">
-      {/* Top section: Gauge + Summary stats */}
       <div className="flex flex-col md:flex-row items-center md:items-start gap-6">
         <ScoreGauge score={data.overall_score} grade={data.overall_grade} />
         <div className="flex-1 space-y-3">
@@ -124,7 +464,6 @@ function ScorecardPanel({ distributor }: { distributor: string }) {
         </div>
       </div>
 
-      {/* Metric bars */}
       <div className="bg-white border border-zinc-200 rounded-xl shadow-sm p-5">
         <h3 className="text-sm font-semibold text-zinc-700 mb-4">Score Breakdown</h3>
         <div className="space-y-4">
@@ -132,7 +471,6 @@ function ScorecardPanel({ distributor }: { distributor: string }) {
         </div>
       </div>
 
-      {/* Recommendations */}
       {data.recommendations.length > 0 && (
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
           <h3 className="text-sm font-semibold text-amber-800 mb-2">Recommendations</h3>
@@ -150,7 +488,9 @@ function ScorecardPanel({ distributor }: { distributor: string }) {
   );
 }
 
-// -- Missed opportunities panel ----------------------------------------------
+// ============================================================================
+// MISSED OPPORTUNITIES PANEL (existing, kept)
+// ============================================================================
 
 const OPP_TYPE_LABELS: Record<string, { label: string; color: string }> = {
   closeout_deal: { label: "Closeout", color: "bg-fuchsia-100 text-fuchsia-800 border-fuchsia-300" },
@@ -162,20 +502,20 @@ function missedColumns(favCodes: Set<string>): Column<MissedOpportunityRow>[] {
   return [
     {
       key: "fav", label: "", thClassName: "w-8",
-      render: (r) => r.code !== "—" ? <FavoriteButton code={r.code} distributor={r.distributor_slug ?? undefined} isFavorite={favCodes.has(r.code)} /> : null,
+      render: (r) => r.code !== "\u2014" ? <FavoriteButton code={r.code} distributor={r.distributor_slug ?? undefined} isFavorite={favCodes.has(r.code)} /> : null,
     },
     {
       key: "code", label: "Code", sortable: true,
-      render: (r) => r.code !== "—" ? (
+      render: (r) => r.code !== "\u2014" ? (
         <ProductLink code={r.code} distributor={r.distributor_slug ?? undefined}>
           {r.code}
         </ProductLink>
-      ) : <span className="text-zinc-400 text-xs">—</span>,
+      ) : <span className="text-zinc-400 text-xs">\u2014</span>,
       sortValue: (r) => r.code,
     },
     {
       key: "description", label: "Product", sortable: true,
-      render: (r) => <span className="text-sm">{r.description ?? "—"}</span>,
+      render: (r) => <span className="text-sm">{r.description ?? "\u2014"}</span>,
       sortValue: (r) => r.description ?? "",
     },
     {
@@ -188,7 +528,7 @@ function missedColumns(favCodes: Set<string>): Column<MissedOpportunityRow>[] {
     },
     {
       key: "case_cost", label: "Case $", sortable: true, align: "right",
-      render: (r) => r.case_cost ? <span className="font-mono text-sm">${r.case_cost}</span> : <span className="text-zinc-300">—</span>,
+      render: (r) => r.case_cost ? <span className="font-mono text-sm">${r.case_cost}</span> : <span className="text-zinc-300">\u2014</span>,
       sortValue: (r) => r.case_cost ? parseFloat(r.case_cost) : 0,
     },
     {
@@ -196,7 +536,7 @@ function missedColumns(favCodes: Set<string>): Column<MissedOpportunityRow>[] {
       render: (r) => {
         if (r.rip_save) return <span className="text-xs text-emerald-600 font-medium">-${r.rip_save} ({r.rip_discount_pct}%)</span>;
         if (r.closeout_pct_off) return <span className="text-xs text-fuchsia-600 font-medium">-{r.closeout_pct_off}%</span>;
-        return <span className="text-zinc-300">—</span>;
+        return <span className="text-zinc-300">\u2014</span>;
       },
       sortValue: (r) => r.rip_discount_pct ?? r.closeout_pct_off ?? 0,
     },
@@ -228,7 +568,6 @@ function MissedOpportunitiesPanel({ distributor }: { distributor: string }) {
     queryFn: () => decisionsApi.missedOpportunities(distributor, 200),
   });
 
-  // Get watchlist for fav icons
   const wlQ = useQuery({ queryKey: ["watchlist"], queryFn: async () => {
     const { watchlistApi } = await import("../lib/api");
     return watchlistApi.list();
@@ -252,7 +591,6 @@ function MissedOpportunitiesPanel({ distributor }: { distributor: string }) {
   const summary = data.summary;
   const byType = summary.by_type as Record<string, number>;
 
-  // Bar chart data
   const chartData = Object.entries(byType).map(([type, count]) => ({
     name: OPP_TYPE_LABELS[type]?.label ?? type,
     count: count as number,
@@ -261,7 +599,6 @@ function MissedOpportunitiesPanel({ distributor }: { distributor: string }) {
 
   return (
     <div className="space-y-5">
-      {/* Summary */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div className="rounded-lg border border-zinc-200 bg-white px-3 py-2">
           <div className="text-xs text-zinc-500">Opportunities</div>
@@ -281,7 +618,6 @@ function MissedOpportunitiesPanel({ distributor }: { distributor: string }) {
         </div>
       </div>
 
-      {/* Chart + filters */}
       <div className="flex flex-col md:flex-row gap-4">
         {chartData.length > 0 && (
           <div className="bg-white border border-zinc-200 rounded-xl shadow-sm p-4 w-full md:w-64 shrink-0">
@@ -311,7 +647,6 @@ function MissedOpportunitiesPanel({ distributor }: { distributor: string }) {
         </div>
       </div>
 
-      {/* Table */}
       <div className="bg-white border border-zinc-200 rounded-xl shadow-sm overflow-hidden">
         <SortableTable
           data={sorted(filteredRows, cols).slice(0, rowLimit)}
@@ -333,23 +668,33 @@ function MissedOpportunitiesPanel({ distributor }: { distributor: string }) {
   );
 }
 
-// -- Main page ---------------------------------------------------------------
+// ============================================================================
+// MAIN PAGE
+// ============================================================================
 
 export default function Decisions() {
   const { distributor } = useDistributor();
-  const [tab, setTab] = useState<Tab>("scorecard");
+  const [tab, setTab] = useState<Tab>("buysheet");
 
   return (
     <div className="space-y-5">
       <div>
         <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-brand-navy">Decision Support</h1>
         <p className="text-sm text-zinc-500 mt-1">
-          Intelligence to help you make better ordering decisions.
+          What to buy, when to buy, and why — powered by price intelligence.
         </p>
       </div>
 
       {/* Tabs */}
       <div className="flex items-center gap-1 p-1 rounded-lg bg-zinc-100 w-fit">
+        <button
+          onClick={() => setTab("buysheet")}
+          className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
+            tab === "buysheet" ? "bg-white text-brand-navy shadow-sm" : "text-zinc-500 hover:text-zinc-700"
+          }`}
+        >
+          Buy Sheet
+        </button>
         <button
           onClick={() => setTab("scorecard")}
           className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
@@ -369,6 +714,7 @@ export default function Decisions() {
       </div>
 
       {/* Tab content */}
+      {tab === "buysheet" && <BuySheetPanel distributor={distributor} />}
       {tab === "scorecard" && <ScorecardPanel distributor={distributor} />}
       {tab === "missed" && <MissedOpportunitiesPanel distributor={distributor} />}
     </div>

@@ -18,7 +18,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
-from sqlalchemy import and_, asc, desc, func, or_, select
+from sqlalchemy import and_, asc, desc, func, or_, select, text
 from sqlalchemy.orm import Session
 
 from lpb_core.db import get_session
@@ -29,6 +29,7 @@ from lpb_core.db.models import (
     Distributor,
     InventoryReduction,
     PartialsPricing,
+    PartialsRip,
     Product,
     ProductEdition,
     RipOffer,
@@ -804,3 +805,824 @@ def order_scorecard(
             "at_12m_high": at_high,
         },
     )
+
+
+# ============================================================================
+# BUY SHEET — Comprehensive Decision Support
+# ============================================================================
+
+class BuySheetItem(BaseModel):
+    code: str
+    description: str | None = None
+    size: str | None = None
+    pack: int | None = None
+    brand: str | None = None
+    category: str | None = None
+    case_cost: str | None = None
+    btl_cost: str | None = None
+    divisions: str | None = None
+    distributor_slug: str | None = None
+
+    # Price intelligence
+    prev_case_cost: str | None = None
+    case_cost_pct: float | None = None
+    price_trend: str | None = None
+    at_12m_low: bool = False
+    at_12m_high: bool = False
+    months_of_history: int = 0
+    avg_case_cost: str | None = None
+    min_case_cost: str | None = None
+    max_case_cost: str | None = None
+
+    # RIP info
+    has_rip: bool = False
+    best_rip_save: str | None = None
+    best_rip_tier: str | None = None
+    best_rip_effective: str | None = None
+    rip_discount_pct: float | None = None
+    rip_stable: bool | None = None
+    rip_tiers: list[dict] | None = None
+
+    # Closeout info
+    is_closeout: bool = False
+    closeout_pct_off: float | None = None
+    closeout_original_case: str | None = None
+
+    # Specials (partials)
+    has_active_special: bool = False
+    special_end_date: str | None = None
+    special_days_remaining: int | None = None
+    special_description: str | None = None
+
+    # Decision
+    verdict: str
+    verdict_reasons: list[str]
+    urgency: int = 0
+    section: str
+
+    # Tracking
+    is_tracked: bool = False
+
+
+class BuySheetSection(BaseModel):
+    key: str
+    title: str
+    subtitle: str
+    count: int
+    icon: str
+    items: list[BuySheetItem]
+
+
+class BuySheetSummary(BaseModel):
+    total_items: int
+    total_buy_now: int
+    total_consider: int
+    total_defer: int
+    total_last_chance: int
+    total_closeouts: int
+    total_new_rips: int
+    total_lost_rips: int
+    potential_rip_savings: str
+    market_direction: str
+    avg_market_change_pct: float
+    edition_label: str
+
+
+class BuySheetResponse(BaseModel):
+    sections: list[BuySheetSection]
+    summary: BuySheetSummary
+
+
+def _previous_edition(
+    session: Session, distributor_id: UUID, current_year: int, current_month: int,
+) -> BookEdition | None:
+    """Find the edition immediately before the current one for the same distributor."""
+    return session.execute(
+        select(BookEdition)
+        .where(
+            BookEdition.distributor_id == distributor_id,
+            BookEdition.is_active == True,  # noqa: E712
+            or_(
+                BookEdition.year < current_year,
+                and_(BookEdition.year == current_year,
+                     BookEdition.month < current_month),
+            ),
+        )
+        .order_by(desc(BookEdition.year), desc(BookEdition.month))
+        .limit(1)
+    ).scalar_one_or_none()
+
+
+def _compute_price_trend(prices: list[float]) -> str:
+    """Determine price trend from a chronological list of prices."""
+    if len(prices) < 2:
+        return "new"
+    recent = prices[-3:] if len(prices) >= 3 else prices
+    increases = sum(1 for i in range(1, len(recent)) if recent[i] > recent[i - 1])
+    decreases = sum(1 for i in range(1, len(recent)) if recent[i] < recent[i - 1])
+    if increases > decreases:
+        return "rising"
+    if decreases > increases:
+        return "falling"
+    return "stable"
+
+
+@router.get("/api/v1/decisions/buy-sheet", response_model=BuySheetResponse)
+def buy_sheet(
+    distributor: str = Query("nj-allied"),
+    user: dict = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    """Comprehensive decision support: what to buy, how much, why, buy vs defer."""
+    from collections import defaultdict
+
+    today = date.today()
+
+    try:
+        edition = _current_edition(session, distributor)
+    except HTTPException:
+        empty_summary = BuySheetSummary(
+            total_items=0, total_buy_now=0, total_consider=0, total_defer=0,
+            total_last_chance=0, total_closeouts=0, total_new_rips=0,
+            total_lost_rips=0, potential_rip_savings="0",
+            market_direction="stable", avg_market_change_pct=0.0,
+            edition_label="—",
+        )
+        return BuySheetResponse(sections=[], summary=empty_summary)
+
+    dslug = distributor
+    dist_row = session.execute(
+        select(Distributor.slug).where(Distributor.id == edition.distributor_id)
+    ).scalar_one_or_none()
+    if dist_row:
+        dslug = dist_row
+
+    prev_edition = _previous_edition(
+        session, edition.distributor_id, edition.year, edition.month,
+    )
+
+    # -- User's tracked product IDs ------------------------------------------
+    default_wl = session.execute(
+        select(Watchlist).where(
+            Watchlist.tenant_id == user["tenant_id"],
+            Watchlist.is_default == True,  # noqa: E712
+        )
+    ).scalar_one_or_none()
+    tracked_pids: set[UUID] = set()
+    if default_wl:
+        tracked_pids = set(session.execute(
+            select(WatchlistItem.product_id)
+            .where(WatchlistItem.watchlist_id == default_wl.id)
+        ).scalars().all())
+
+    # -- 1. All current products with pricing --------------------------------
+    pe_rows = session.execute(
+        select(
+            Product.id.label("pid"),
+            Product.code,
+            ProductEdition.description,
+            ProductEdition.size,
+            ProductEdition.pack,
+            ProductEdition.case_cost,
+            ProductEdition.btl_cost,
+            ProductEdition.divisions,
+            Category.display_name.label("category"),
+            Brand.display_name.label("brand"),
+        )
+        .select_from(ProductEdition)
+        .join(Product, Product.id == ProductEdition.product_id)
+        .outerjoin(Category, Category.id == ProductEdition.category_id)
+        .outerjoin(Brand, Brand.id == ProductEdition.brand_id)
+        .where(
+            ProductEdition.book_edition_id == edition.id,
+            ProductEdition.case_cost.is_not(None),
+        )
+    ).all()
+
+    # Build a master dict keyed by product_id
+    product_map: dict[UUID, dict] = {}
+    for r in pe_rows:
+        product_map[r.pid] = {
+            "pid": r.pid,
+            "code": r.code,
+            "description": r.description,
+            "size": r.size,
+            "pack": r.pack,
+            "case_cost": float(r.case_cost) if r.case_cost else None,
+            "btl_cost": float(r.btl_cost) if r.btl_cost else None,
+            "divisions": r.divisions,
+            "category": r.category,
+            "brand": r.brand,
+        }
+
+    all_pids = set(product_map.keys())
+    if not all_pids:
+        empty_summary = BuySheetSummary(
+            total_items=0, total_buy_now=0, total_consider=0, total_defer=0,
+            total_last_chance=0, total_closeouts=0, total_new_rips=0,
+            total_lost_rips=0, potential_rip_savings="0",
+            market_direction="stable", avg_market_change_pct=0.0,
+            edition_label=_edition_label(edition),
+        )
+        return BuySheetResponse(sections=[], summary=empty_summary)
+
+    # -- 2. Current RIP offers -----------------------------------------------
+    rip_rows = session.execute(
+        select(
+            ProductEdition.product_id,
+            RipOffer.tier,
+            RipOffer.tier_cases,
+            RipOffer.save_amount,
+            RipOffer.case_price,
+        )
+        .select_from(RipOffer)
+        .join(ProductEdition, ProductEdition.id == RipOffer.product_edition_id)
+        .where(ProductEdition.book_edition_id == edition.id)
+        .order_by(ProductEdition.product_id, desc(RipOffer.save_amount))
+    ).all()
+
+    curr_rip_map: dict[UUID, list[dict]] = defaultdict(list)
+    for r in rip_rows:
+        curr_rip_map[r.product_id].append({
+            "tier": r.tier,
+            "tier_cases": r.tier_cases,
+            "save_amount": float(r.save_amount),
+            "case_price": float(r.case_price) if r.case_price else None,
+        })
+    curr_rip_pids = set(curr_rip_map.keys())
+
+    # -- 3. Previous edition RIP products (for lost/new detection) -----------
+    prev_rip_pids: set[UUID] = set()
+    prev_rip_save_map: dict[UUID, float] = {}
+    if prev_edition:
+        prev_rip_rows = session.execute(
+            select(
+                ProductEdition.product_id,
+                func.max(RipOffer.save_amount).label("best_save"),
+            )
+            .select_from(RipOffer)
+            .join(ProductEdition, ProductEdition.id == RipOffer.product_edition_id)
+            .where(ProductEdition.book_edition_id == prev_edition.id)
+            .group_by(ProductEdition.product_id)
+        ).all()
+        for r in prev_rip_rows:
+            prev_rip_pids.add(r.product_id)
+            prev_rip_save_map[r.product_id] = float(r.best_save)
+
+    lost_rip_pids = prev_rip_pids - curr_rip_pids
+    new_rip_pids = curr_rip_pids - prev_rip_pids
+
+    # -- 4. Price changes from mv_price_changes ------------------------------
+    price_change_map: dict[UUID, dict] = {}
+    try:
+        pc_rows = session.execute(text(
+            "SELECT product_id, prev_case_cost, case_cost_pct "
+            "FROM mv_price_changes WHERE book_edition_id = :eid"
+        ), {"eid": str(edition.id)}).fetchall()
+        for r in pc_rows:
+            price_change_map[r.product_id] = {
+                "prev_case_cost": float(r.prev_case_cost) if r.prev_case_cost is not None else None,
+                "case_cost_pct": float(r.case_cost_pct) if r.case_cost_pct is not None else None,
+            }
+    except Exception:
+        # mv_price_changes may not exist; fall through gracefully
+        session.rollback()
+
+    # -- 5. 12-month price history for highs/lows/trends ---------------------
+    hist_rows = session.execute(
+        select(
+            ProductEdition.product_id,
+            ProductEdition.case_cost,
+            BookEdition.year,
+            BookEdition.month,
+        )
+        .join(BookEdition, BookEdition.id == ProductEdition.book_edition_id)
+        .where(
+            ProductEdition.product_id.in_(all_pids),
+            ProductEdition.case_cost.is_not(None),
+            _not_future_filter(),
+        )
+        .order_by(ProductEdition.product_id, asc(BookEdition.year), asc(BookEdition.month))
+    ).all()
+
+    price_history: dict[UUID, list[float]] = defaultdict(list)
+    for hr in hist_rows:
+        price_history[hr.product_id].append(float(hr.case_cost))
+
+    # -- 6. Closeout items ---------------------------------------------------
+    co_rows = session.execute(
+        select(
+            InventoryReduction.product_id,
+            InventoryReduction.original_case,
+            InventoryReduction.best_case,
+            InventoryReduction.description.label("co_desc"),
+        )
+        .where(InventoryReduction.book_edition_id == edition.id)
+    ).all()
+
+    closeout_map: dict[UUID, dict] = {}
+    for r in co_rows:
+        pct_off = None
+        if r.original_case and r.best_case and float(r.original_case) > 0:
+            pct_off = round((1 - float(r.best_case) / float(r.original_case)) * 100, 1)
+        closeout_map[r.product_id] = {
+            "pct_off": pct_off,
+            "original_case": float(r.original_case) if r.original_case else None,
+            "best_case": float(r.best_case) if r.best_case else None,
+            "co_desc": r.co_desc,
+        }
+
+    # Previous edition closeouts (for detecting new closeouts)
+    prev_closeout_pids: set[UUID] = set()
+    if prev_edition:
+        prev_closeout_pids = set(session.execute(
+            select(InventoryReduction.product_id)
+            .where(InventoryReduction.book_edition_id == prev_edition.id)
+        ).scalars().all())
+
+    closeout_pids = set(closeout_map.keys())
+    new_closeout_pids = closeout_pids - prev_closeout_pids
+
+    # -- 7. Active partials (web specials) -----------------------------------
+    partial_rows = session.execute(
+        select(
+            PartialsPricing.linked_product_id,
+            PartialsPricing.description,
+            PartialsPricing.end_date,
+            PartialsPricing.best_case_price,
+        )
+        .where(
+            PartialsPricing.book_edition_id == edition.id,
+            PartialsPricing.start_date <= today,
+            PartialsPricing.end_date >= today,
+            PartialsPricing.linked_product_id.is_not(None),
+        )
+        .order_by(asc(PartialsPricing.end_date))
+    ).all()
+
+    special_map: dict[UUID, dict] = {}
+    for p in partial_rows:
+        if p.linked_product_id and p.linked_product_id not in special_map:
+            days_left = (p.end_date - today).days
+            special_map[p.linked_product_id] = {
+                "end_date": str(p.end_date),
+                "days_remaining": days_left,
+                "description": p.description,
+                "best_case_price": float(p.best_case_price) if p.best_case_price else None,
+            }
+
+    # -- Build enriched product data -----------------------------------------
+    def _build_item(pid: UUID, section: str, verdict: str,
+                    reasons: list[str], urgency: int) -> BuySheetItem | None:
+        pm = product_map.get(pid)
+        if pm is None:
+            return None
+
+        cc = pm["case_cost"]
+        prices = price_history.get(pid, [])
+        recent_12 = prices[-12:] if prices else []
+
+        # Price intelligence
+        pc = price_change_map.get(pid, {})
+        prev_cc = pc.get("prev_case_cost")
+        cc_pct = pc.get("case_cost_pct")
+        trend = _compute_price_trend(prices)
+        is_at_low = cc is not None and len(recent_12) >= 2 and cc <= min(recent_12)
+        is_at_high = cc is not None and len(recent_12) >= 2 and cc >= max(recent_12)
+        avg_cc = round(sum(recent_12) / len(recent_12), 2) if recent_12 else None
+        min_cc = min(recent_12) if recent_12 else None
+        max_cc = max(recent_12) if recent_12 else None
+
+        # RIP info
+        rip_tiers_raw = curr_rip_map.get(pid, [])
+        has_rip = len(rip_tiers_raw) > 0
+        best_rip = rip_tiers_raw[0] if rip_tiers_raw else None
+        best_save = best_rip["save_amount"] if best_rip else None
+        best_tier = best_rip["tier"] if best_rip else None
+        best_eff = round(cc - best_save, 2) if cc and best_save else None
+        rip_disc_pct = round(best_save / cc * 100, 1) if cc and best_save and cc > 0 else None
+
+        # RIP stability: same save_amount as previous edition?
+        rip_stable = None
+        if has_rip and pid in prev_rip_save_map:
+            rip_stable = abs(prev_rip_save_map[pid] - best_save) < 0.01
+
+        rip_tiers_out = [
+            {"tier": t["tier"], "save_amount": _money(t["save_amount"]),
+             "case_price": _money(t["case_price"])}
+            for t in rip_tiers_raw
+        ] if rip_tiers_raw else None
+
+        # Closeout
+        co = closeout_map.get(pid)
+        is_closeout = co is not None
+        co_pct_off = co["pct_off"] if co else None
+        co_orig = co["original_case"] if co else None
+
+        # Specials
+        sp = special_map.get(pid)
+        has_special = sp is not None
+
+        return BuySheetItem(
+            code=pm["code"],
+            description=pm["description"],
+            size=pm["size"],
+            pack=pm["pack"],
+            brand=pm["brand"],
+            category=pm["category"],
+            case_cost=_money(cc),
+            btl_cost=_money(pm["btl_cost"]),
+            divisions=pm["divisions"],
+            distributor_slug=dslug,
+            prev_case_cost=_money(prev_cc),
+            case_cost_pct=round(cc_pct, 2) if cc_pct is not None else None,
+            price_trend=trend,
+            at_12m_low=is_at_low,
+            at_12m_high=is_at_high,
+            months_of_history=len(recent_12),
+            avg_case_cost=_money(avg_cc),
+            min_case_cost=_money(min_cc),
+            max_case_cost=_money(max_cc),
+            has_rip=has_rip,
+            best_rip_save=_money(best_save),
+            best_rip_tier=best_tier,
+            best_rip_effective=_money(best_eff),
+            rip_discount_pct=rip_disc_pct,
+            rip_stable=rip_stable,
+            rip_tiers=rip_tiers_out,
+            is_closeout=is_closeout,
+            closeout_pct_off=co_pct_off,
+            closeout_original_case=_money(co_orig),
+            has_active_special=has_special,
+            special_end_date=sp["end_date"] if sp else None,
+            special_days_remaining=sp["days_remaining"] if sp else None,
+            special_description=sp["description"] if sp else None,
+            verdict=verdict,
+            verdict_reasons=reasons,
+            urgency=urgency,
+            section=section,
+            is_tracked=pid in tracked_pids,
+        )
+
+    # -- Score and categorize every product ----------------------------------
+    # Collect items per section; a product CAN appear in multiple sections
+    section_items: dict[str, dict[UUID, BuySheetItem]] = {
+        "last_chance": {},
+        "strong_buy": {},
+        "buy_now": {},
+        "consider": {},
+        "defer": {},
+        "new_opportunities": {},
+    }
+
+    for pid, pm in product_map.items():
+        cc = pm["case_cost"]
+        if cc is None or cc <= 0:
+            continue
+
+        pc = price_change_map.get(pid, {})
+        cc_pct = pc.get("case_cost_pct")
+        prices = price_history.get(pid, [])
+        recent_12 = prices[-12:] if prices else []
+        is_at_low = cc is not None and len(recent_12) >= 2 and cc <= min(recent_12)
+        is_at_high = cc is not None and len(recent_12) >= 2 and cc >= max(recent_12)
+        near_low = (cc is not None and len(recent_12) >= 2
+                    and min(recent_12) > 0
+                    and (cc - min(recent_12)) / min(recent_12) <= 0.03)
+        trend = _compute_price_trend(prices)
+
+        rip_tiers = curr_rip_map.get(pid, [])
+        has_rip = len(rip_tiers) > 0
+        best_save = rip_tiers[0]["save_amount"] if rip_tiers else 0
+        rip_disc = round(best_save / cc * 100, 1) if cc and best_save and cc > 0 else 0
+
+        is_closeout = pid in closeout_map
+        co = closeout_map.get(pid)
+        co_pct = co["pct_off"] if co else None
+
+        sp = special_map.get(pid)
+        sp_days = sp["days_remaining"] if sp else None
+
+        is_lost_rip = pid in lost_rip_pids
+        is_new_rip = pid in new_rip_pids
+        is_new_closeout = pid in new_closeout_pids
+        price_dropped = cc_pct is not None and cc_pct < 0
+        price_drop_pct = abs(cc_pct) if cc_pct and cc_pct < 0 else 0
+        price_rose = cc_pct is not None and cc_pct > 0
+        price_rise_pct = cc_pct if cc_pct and cc_pct > 0 else 0
+
+        # ---- Section 1: LAST CHANCE ----------------------------------------
+        last_reasons: list[str] = []
+        last_urgency = 0
+
+        if is_lost_rip and pid in product_map:
+            prev_save = prev_rip_save_map.get(pid, 0)
+            last_reasons.append(
+                f"RIP of ${prev_save:.2f}/case expired — no longer available this month"
+            )
+            last_urgency = max(last_urgency, 95)
+
+        if is_closeout:
+            pct_str = f" ({co_pct}% off)" if co_pct else ""
+            last_reasons.append(f"Closeout — being discontinued{pct_str}")
+            last_urgency = max(last_urgency, 92)
+
+        if sp and sp_days is not None and sp_days <= 3:
+            last_reasons.append(
+                f"Web special ends in {sp_days} day{'s' if sp_days != 1 else ''}"
+            )
+            last_urgency = max(last_urgency, 90)
+
+        if last_reasons:
+            item = _build_item(pid, "last_chance", "LAST_CHANCE", last_reasons, last_urgency)
+            if item:
+                section_items["last_chance"][pid] = item
+
+        # ---- Section 2: STRONG BUY ----------------------------------------
+        strong_reasons: list[str] = []
+        strong_urgency = 0
+
+        if price_dropped and has_rip:
+            strong_reasons.append(
+                f"Price dropped {price_drop_pct:.1f}% AND has RIP saving ${best_save:.2f}/case"
+            )
+            strong_urgency = max(strong_urgency, 85)
+
+        if is_at_low and has_rip:
+            strong_reasons.append(
+                f"At 12-month low price AND has RIP ({rip_disc}% discount)"
+            )
+            strong_urgency = max(strong_urgency, 82)
+
+        if is_new_rip and rip_disc > 10:
+            strong_reasons.append(
+                f"NEW RIP this month — {rip_disc}% discount (${best_save:.2f}/case)"
+            )
+            strong_urgency = max(strong_urgency, 80)
+
+        if is_closeout and co_pct and co_pct > 20:
+            strong_reasons.append(
+                f"Closeout with {co_pct}% off — exceptional clearance deal"
+            )
+            strong_urgency = max(strong_urgency, 78)
+
+        if strong_reasons:
+            item = _build_item(pid, "strong_buy", "STRONG_BUY", strong_reasons, strong_urgency)
+            if item:
+                section_items["strong_buy"][pid] = item
+
+        # ---- Section 3: BUY NOW -------------------------------------------
+        buy_reasons: list[str] = []
+        buy_urgency = 0
+
+        if price_drop_pct > 2:
+            buy_reasons.append(f"Price dropped {price_drop_pct:.1f}% this month")
+            buy_urgency = max(buy_urgency, 65)
+
+        if has_rip and rip_disc > 5:
+            buy_reasons.append(f"RIP discount of {rip_disc}% (${best_save:.2f}/case)")
+            buy_urgency = max(buy_urgency, 60)
+
+        if is_at_low or near_low:
+            if is_at_low:
+                buy_reasons.append("At 12-month low price")
+            else:
+                buy_reasons.append("Within 3% of 12-month low price")
+            buy_urgency = max(buy_urgency, 58)
+
+        if sp and sp_days is not None and sp_days > 3:
+            buy_reasons.append(
+                f"Active web special — {sp_days} days remaining"
+            )
+            buy_urgency = max(buy_urgency, 55)
+
+        if buy_reasons and pid not in section_items["strong_buy"]:
+            item = _build_item(pid, "buy_now", "BUY_NOW", buy_reasons, buy_urgency)
+            if item:
+                section_items["buy_now"][pid] = item
+
+        # ---- Section 4: CONSIDER ------------------------------------------
+        consider_reasons: list[str] = []
+        consider_urgency = 0
+
+        has_small_rip = has_rip and 0 < rip_disc <= 5
+        price_stable = cc_pct is not None and abs(cc_pct) <= 2
+
+        if price_stable and has_small_rip:
+            consider_reasons.append(
+                f"Stable price with small RIP ({rip_disc}% discount)"
+            )
+            consider_urgency = max(consider_urgency, 35)
+
+        if price_stable and not has_rip and len(recent_12) >= 2:
+            avg_price = sum(recent_12) / len(recent_12)
+            if avg_price > 0 and abs(cc - avg_price) / avg_price <= 0.05:
+                consider_reasons.append("Price near 12-month average — normal pricing")
+                consider_urgency = max(consider_urgency, 25)
+
+        if has_rip and not price_dropped and not is_at_low and rip_disc <= 10:
+            if not consider_reasons:
+                consider_reasons.append(
+                    f"Has RIP ({rip_disc}% off) but price not at a compelling level"
+                )
+                consider_urgency = max(consider_urgency, 30)
+
+        if (consider_reasons
+                and pid not in section_items["strong_buy"]
+                and pid not in section_items["buy_now"]):
+            item = _build_item(pid, "consider", "CONSIDER", consider_reasons, consider_urgency)
+            if item:
+                section_items["consider"][pid] = item
+
+        # ---- Section 5: DEFER (never defer closeouts) ----------------------
+        defer_reasons: list[str] = []
+        defer_urgency = 0
+
+        if not is_closeout:
+            if price_rise_pct > 3:
+                defer_reasons.append(
+                    f"Price increased {price_rise_pct:.1f}% this month — wait for correction"
+                )
+                defer_urgency = max(defer_urgency, 15)
+
+            if is_at_high:
+                defer_reasons.append("At 12-month HIGH price — worst time to buy")
+                defer_urgency = max(defer_urgency, 10)
+
+            if trend == "rising" and len(prices) >= 3:
+                recent_3 = prices[-3:]
+                consecutive_up = all(
+                    recent_3[i] > recent_3[i - 1] for i in range(1, len(recent_3))
+                )
+                if consecutive_up:
+                    defer_reasons.append(
+                        "3+ consecutive price increases — rising trend"
+                    )
+                    defer_urgency = max(defer_urgency, 12)
+
+        if (defer_reasons
+                and pid not in section_items["last_chance"]
+                and pid not in section_items["strong_buy"]
+                and pid not in section_items["buy_now"]):
+            item = _build_item(pid, "defer", "DEFER", defer_reasons, defer_urgency)
+            if item:
+                section_items["defer"][pid] = item
+
+        # ---- Section 6: NEW OPPORTUNITIES ----------------------------------
+        new_reasons: list[str] = []
+        new_urgency = 0
+
+        if is_new_rip:
+            new_reasons.append(
+                f"NEW RIP this month — saving ${best_save:.2f}/case ({rip_disc}% off)"
+            )
+            new_urgency = max(new_urgency, 60)
+
+        if is_new_closeout:
+            pct_str = f" ({co_pct}% off)" if co_pct else ""
+            new_reasons.append(f"Newly added to closeout list{pct_str}")
+            new_urgency = max(new_urgency, 55)
+
+        if sp and pid not in special_map:
+            pass  # already handled; this branch is a no-op guard
+        # Check for new specials by seeing if the partial just started recently
+        if sp and sp_days is not None:
+            total_duration = sp_days  # approximate; we only know days remaining
+            if total_duration is not None:
+                # Consider it "new" if end_date minus today > (end_date - start_date - 7)
+                # Simpler: just flag all active specials in this section
+                # as they are time-bounded opportunities
+                pass
+
+        if new_reasons:
+            item = _build_item(
+                pid, "new_opportunities", "BUY_NOW" if new_urgency >= 55 else "CONSIDER",
+                new_reasons, new_urgency,
+            )
+            if item:
+                section_items["new_opportunities"][pid] = item
+
+    # -- Also add lost-RIP products that may not be in current product_map ---
+    # Lost RIPs: products that HAD a RIP last month but are still in the catalog
+    # without a RIP this month. Some might already be added; ensure no dupes.
+    for pid in lost_rip_pids:
+        if pid in section_items["last_chance"]:
+            continue  # already added
+        if pid not in product_map:
+            continue  # product not in current edition at all
+        prev_save = prev_rip_save_map.get(pid, 0)
+        reasons = [f"RIP of ${prev_save:.2f}/case expired — no longer available this month"]
+        item = _build_item(pid, "last_chance", "LAST_CHANCE", reasons, 95)
+        if item:
+            section_items["last_chance"][pid] = item
+
+    # -- Sort each section by urgency desc, limit to 50 ----------------------
+    SECTION_LIMIT = 50
+
+    def _sorted_items(items_dict: dict[UUID, BuySheetItem]) -> list[BuySheetItem]:
+        return sorted(items_dict.values(), key=lambda x: -x.urgency)[:SECTION_LIMIT]
+
+    # -- Compute market direction --------------------------------------------
+    all_pct_changes = [
+        pc["case_cost_pct"]
+        for pc in price_change_map.values()
+        if pc.get("case_cost_pct") is not None
+    ]
+    avg_mkt_change = round(sum(all_pct_changes) / len(all_pct_changes), 2) if all_pct_changes else 0.0
+    if avg_mkt_change > 1:
+        market_dir = "prices_rising"
+    elif avg_mkt_change < -1:
+        market_dir = "prices_falling"
+    else:
+        market_dir = "stable"
+
+    # -- Total potential RIP savings -----------------------------------------
+    total_rip_savings = sum(
+        curr_rip_map[pid][0]["save_amount"]
+        for pid in curr_rip_pids
+        if pid in curr_rip_map and curr_rip_map[pid]
+    )
+
+    # -- Assemble sections ---------------------------------------------------
+    last_chance_items = _sorted_items(section_items["last_chance"])
+    strong_buy_items = _sorted_items(section_items["strong_buy"])
+    buy_now_items = _sorted_items(section_items["buy_now"])
+    consider_items = _sorted_items(section_items["consider"])
+    defer_items = _sorted_items(section_items["defer"])
+    new_opp_items = _sorted_items(section_items["new_opportunities"])
+
+    sections = [
+        BuySheetSection(
+            key="last_chance",
+            title="LAST CHANCE",
+            subtitle="Buy or lose — expiring RIPs, closeouts, ending specials",
+            count=len(last_chance_items),
+            icon="fire",
+            items=last_chance_items,
+        ),
+        BuySheetSection(
+            key="strong_buy",
+            title="STRONG BUY",
+            subtitle="Best deals this month — multiple signals align",
+            count=len(strong_buy_items),
+            icon="star",
+            items=strong_buy_items,
+        ),
+        BuySheetSection(
+            key="buy_now",
+            title="BUY NOW",
+            subtitle="Good timing — favorable price or discount",
+            count=len(buy_now_items),
+            icon="check",
+            items=buy_now_items,
+        ),
+        BuySheetSection(
+            key="consider",
+            title="CONSIDER",
+            subtitle="Decent but not urgent — stable pricing with small upside",
+            count=len(consider_items),
+            icon="think",
+            items=consider_items,
+        ),
+        BuySheetSection(
+            key="defer",
+            title="DEFER",
+            subtitle="Wait for better — prices rising or at highs",
+            count=len(defer_items),
+            icon="pause",
+            items=defer_items,
+        ),
+        BuySheetSection(
+            key="new_opportunities",
+            title="NEW THIS MONTH",
+            subtitle="New RIPs, new closeouts, fresh opportunities",
+            count=len(new_opp_items),
+            icon="sparkle",
+            items=new_opp_items,
+        ),
+    ]
+
+    # Remove empty sections
+    sections = [s for s in sections if s.count > 0]
+
+    # -- Summary -------------------------------------------------------------
+    all_unique_pids: set[UUID] = set()
+    for sec_dict in section_items.values():
+        all_unique_pids.update(sec_dict.keys())
+
+    summary = BuySheetSummary(
+        total_items=len(all_unique_pids),
+        total_buy_now=len(section_items["buy_now"]),
+        total_consider=len(section_items["consider"]),
+        total_defer=len(section_items["defer"]),
+        total_last_chance=len(section_items["last_chance"]),
+        total_closeouts=len(closeout_pids),
+        total_new_rips=len(new_rip_pids),
+        total_lost_rips=len(lost_rip_pids & all_pids),
+        potential_rip_savings=_money(total_rip_savings) or "0",
+        market_direction=market_dir,
+        avg_market_change_pct=avg_mkt_change,
+        edition_label=_edition_label(edition),
+    )
+
+    return BuySheetResponse(sections=sections, summary=summary)

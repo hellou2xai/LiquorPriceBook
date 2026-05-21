@@ -890,6 +890,78 @@ export type OrderScorecardResponse = {
   summary: Record<string, any>;
 };
 
+// -- Buy Sheet types ---------------------------------------------------------
+
+export type BuySheetItem = {
+  code: string;
+  description: string | null;
+  size: string | null;
+  pack: number | null;
+  brand: string | null;
+  category: string | null;
+  case_cost: string | null;
+  btl_cost: string | null;
+  divisions: string | null;
+  distributor_slug: string | null;
+  prev_case_cost: string | null;
+  case_cost_pct: number | null;
+  price_trend: string | null;
+  at_12m_low: boolean;
+  at_12m_high: boolean;
+  months_of_history: number;
+  avg_case_cost: string | null;
+  min_case_cost: string | null;
+  max_case_cost: string | null;
+  has_rip: boolean;
+  best_rip_save: string | null;
+  best_rip_tier: string | null;
+  best_rip_effective: string | null;
+  rip_discount_pct: number | null;
+  rip_stable: boolean | null;
+  rip_tiers: { tier: string; save_amount: string; case_price: string }[] | null;
+  is_closeout: boolean;
+  closeout_pct_off: number | null;
+  closeout_original_case: string | null;
+  has_active_special: boolean;
+  special_end_date: string | null;
+  special_days_remaining: number | null;
+  special_description: string | null;
+  verdict: string;
+  verdict_reasons: string[];
+  urgency: number;
+  section: string;
+  is_tracked: boolean;
+};
+
+export type BuySheetSection = {
+  key: string;
+  title: string;
+  subtitle: string;
+  count: number;
+  icon: string;
+  items: BuySheetItem[];
+};
+
+export type BuySheetSummary = {
+  total_items: number;
+  total_buy_now: number;
+  total_consider: number;
+  total_defer: number;
+  total_last_chance: number;
+  total_closeouts: number;
+  total_new_rips: number;
+  total_lost_rips: number;
+  potential_rip_savings: string;
+  market_direction: string;
+  avg_market_change_pct: number;
+  edition_label: string;
+};
+
+export type BuySheetResponse = {
+  sections: BuySheetSection[];
+  summary: BuySheetSummary;
+};
+
 export const decisionsApi = {
   getRating: (productCode: string, distributor = "nj-allied") =>
     api<RipRatingOut>(`/api/v1/rip-ratings${_qs({ product_code: productCode, distributor })}`),
@@ -903,4 +975,6 @@ export const decisionsApi = {
     api<MissedOpportunitiesResponse>(`/api/v1/decisions/missed-opportunities${_qs({ distributor, limit })}`),
   orderScorecard: (distributor = "nj-allied") =>
     api<OrderScorecardResponse>(`/api/v1/decisions/order-scorecard${_qs({ distributor })}`),
+  buySheet: (distributor = "nj-allied") =>
+    api<BuySheetResponse>(`/api/v1/decisions/buy-sheet${_qs({ distributor })}`),
 };

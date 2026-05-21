@@ -341,7 +341,10 @@ def _handle_all_distributors(view, session, limit, user):
     edition_labels = []
 
     for slug, (cur, prev, dist) in sorted(all_eds.items()):
-        resp = handler(session, cur, prev, limit, user)
+        try:
+            resp = handler(session, cur, prev, limit, user)
+        except Exception:
+            continue  # skip distributors that error out
         for r in resp.rows:
             r.distributor_slug = dist.slug
             r.distributor_name = dist.name
@@ -404,7 +407,9 @@ def _price_changes(session, current, previous, limit, user, *, direction: str):
         .where(
             CurPE.book_edition_id == current.id,
             CurPE.case_cost.is_not(None),
+            CurPE.case_cost > 0,
             PrevPE.case_cost.is_not(None),
+            PrevPE.case_cost > 0,
             CurPE.case_cost != PrevPE.case_cost,
         )
     )
@@ -496,6 +501,7 @@ def _price_increases(session, current, previous, limit, user):
         .where(
             ProductEdition.book_edition_id == current.id,
             ProductEdition.case_cost.is_not(None),
+            ProductEdition.case_cost > 0,
             NxtPE.case_cost.is_not(None),
             NxtPE.case_cost > ProductEdition.case_cost,
         )
@@ -993,7 +999,9 @@ def _watchlist_movers(session, current, previous, limit, user):
             ProductEdition.book_edition_id == current.id,
             ProductEdition.product_id.in_(wl_product_ids),
             ProductEdition.case_cost.is_not(None),
+            ProductEdition.case_cost > 0,
             PrevPE.case_cost.is_not(None),
+            PrevPE.case_cost > 0,
             ProductEdition.case_cost != PrevPE.case_cost,
         )
         .order_by(asc(
