@@ -302,15 +302,24 @@ def ingest_prescraped(
             detail=f"Unknown distributor slug: {body.distributor}",
         )
 
-    # Idempotent edition upsert (no pdf_bytes stored — saves DB space too)
+    # Idempotent edition upsert — prefer matching by (distributor, year, month)
+    # so re-ingesting the same month always updates the existing edition,
+    # even if the content_hash differs (e.g. scraper fix changed the output).
     edition = session.execute(
         select(BookEdition).where(
             BookEdition.distributor_id == dist.id,
-            BookEdition.content_hash == body.content_hash,
+            BookEdition.year == body.year,
+            BookEdition.month == body.month,
         )
+        .order_by(desc(BookEdition.created_at))
+        .limit(1)
     ).scalar_one_or_none()
     reused = edition is not None
-    if edition is None:
+    if reused:
+        # Update hash/filename in case the source changed
+        edition.content_hash = body.content_hash
+        edition.source_filename = body.source_filename
+    else:
         edition = BookEdition(
             distributor_id=dist.id,
             year=body.year,
@@ -320,7 +329,7 @@ def ingest_prescraped(
             pdf_bytes=None,  # no PDF stored — scraped locally
         )
         session.add(edition)
-        session.flush()
+    session.flush()
 
     run = IngestRun(book_edition_id=edition.id, status="pending")
     session.add(run)
