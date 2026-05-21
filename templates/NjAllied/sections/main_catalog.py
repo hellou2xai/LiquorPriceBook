@@ -134,6 +134,28 @@ def _despace(text):
     return " ".join(out)
 
 
+# Gap threshold in points.  In Allied PDFs, intra-character gaps are
+# 0-0.3 pt and inter-word gaps are 1.2+ pt.  0.5 pt cleanly separates them.
+_WORD_GAP_PT = 0.5
+
+
+def _join_words_by_position(words):
+    """Join words using their x-positions to detect real word breaks.
+
+    Adjacent words with tiny gaps (<0.5 pt) are merged (OCR fragments).
+    Words separated by a larger gap get a space between them.
+    """
+    if not words:
+        return ""
+    pieces = [words[0]["text"]]
+    for i in range(1, len(words)):
+        gap = words[i]["x0"] - words[i - 1]["x1"]
+        if gap > _WORD_GAP_PT:
+            pieces.append(" ")
+        pieces.append(words[i]["text"])
+    return "".join(pieces)
+
+
 def assemble_row_values(lane_words, lane):
     """Given lane words for one row, snap each word to its nearest field anchor.
     Multiple words landing in the same field are concatenated in x0 order.
@@ -412,9 +434,7 @@ def parse_main_catalog(pages, source):
                     # until a new sub-variant or brand line replaces it
                     continue
 
-                text = " ".join(w["text"] for w in lane_words).strip()
-                # Also collapse any OCR fragments in the text line
-                text = _despace(text)
+                text = _join_words_by_position(lane_words).strip()
 
                 # Skip column-header lines that slipped through
                 if text.startswith("Code Size Pk") or text.startswith("No. Cost") \
