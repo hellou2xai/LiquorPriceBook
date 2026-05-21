@@ -315,11 +315,7 @@ def ingest_prescraped(
         .limit(1)
     ).scalar_one_or_none()
     reused = edition is not None
-    if reused:
-        # Update hash/filename in case the source changed
-        edition.content_hash = body.content_hash
-        edition.source_filename = body.source_filename
-    else:
+    if not reused:
         edition = BookEdition(
             distributor_id=dist.id,
             year=body.year,
